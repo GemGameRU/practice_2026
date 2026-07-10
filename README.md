@@ -120,5 +120,6 @@
 * Реализовать систему логирования
 
 
+***
 Ссылка на дубликат спецификации и плана разработки в формате .docx:
 https://docs.google.com/document/d/10gOd9gUpyoI7_OY15nDK33Z0YLvaQtOG/edit?usp=sharing&ouid=115757420574292809135&rtpof=true&sd=true
