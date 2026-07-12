@@ -91,6 +91,7 @@ public class MatrixTableView {
         TableColumn<Row, String> rowHeaderCol = new TableColumn<>("v \\ v");
         rowHeaderCol.setSortable(false);
         rowHeaderCol.setResizable(false);
+        rowHeaderCol.setReorderable(false);
         rowHeaderCol.setPrefWidth(50);
         rowHeaderCol.setStyle("-fx-background-color: #eceff1; -fx-font-weight: bold;");
         rowHeaderCol.setCellValueFactory(cell -> {
@@ -116,6 +117,7 @@ public class MatrixTableView {
             col.setSortable(false);
             col.setResizable(false);
             col.setPrefWidth(56);
+            col.setReorderable(false);
             col.setCellValueFactory(cell -> {
                 Row r = cell.getValue();
                 if (r == null || colIndex >= r.getCells().size()) {
