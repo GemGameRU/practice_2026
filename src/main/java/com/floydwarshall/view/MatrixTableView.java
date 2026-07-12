@@ -98,7 +98,7 @@ public class MatrixTableView {
         rowHeaderCol.setResizable(false);
         rowHeaderCol.setReorderable(false);
         rowHeaderCol.setPrefWidth(50);
-        rowHeaderCol.setStyle("-fx-background-color: #eceff1; -fx-font-weight: bold;");
+        rowHeaderCol.getStyleClass().add("column-header");
 
         rowHeaderCol.setCellValueFactory(cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getIndex())));
 
@@ -117,15 +117,15 @@ public class MatrixTableView {
         // Столбцы вершин.
         for (int j = 0; j < n; j++) {
             final int colIndex = j;
-            
+
             // Создаем столбец без текста, текст будет в graphic
             TableColumn<Row, String> col = new TableColumn<>();
-            
+
             // Создаем Label, который займет всю область заголовка и будет ловить клики
             Label headerLabel = new Label(String.valueOf(j));
             headerLabel.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE); // Растягиваем на всю ширину/высоту
             headerLabel.setAlignment(Pos.CENTER);
-            
+
             // Обработчик клика по заголовку столбца
             headerLabel.setOnMouseClicked(e -> {
                 if (selectionListener != null) {
@@ -134,7 +134,7 @@ public class MatrixTableView {
                 // Очищаем стандартное выделение ячеек, чтобы избежать конфликтов состояний
                 table.getSelectionModel().clearSelection();
             });
-            
+
             col.setGraphic(headerLabel);
             col.setSortable(false);
             col.setResizable(false);
