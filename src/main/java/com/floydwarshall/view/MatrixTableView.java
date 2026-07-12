@@ -17,7 +17,6 @@ import java.util.List;
 import com.floydwarshall.model.Graph;
 
 public class MatrixTableView {
-
     public interface CellEditListener {
         void onCellEdited(int i, int j, String newValue);
     }
@@ -33,12 +32,18 @@ public class MatrixTableView {
     }
 
     public static class Row {
+        private final int index;
         private final ObservableList<StringProperty> cells = FXCollections.observableArrayList();
 
-        public Row(int n) {
+        public Row(int index, int n) {
+            this.index = index;
             for (int k = 0; k < n; k++) {
                 cells.add(new SimpleStringProperty(""));
             }
+        }
+
+        public int getIndex() {
+            return index;
         }
 
         public ObservableList<StringProperty> getCells() {
@@ -61,7 +66,6 @@ public class MatrixTableView {
     private final TableView<Row> table;
     private final boolean editable;
     private final List<Row> rows;
-
     private CellEditListener editListener;
     private CellSelectionListener selectionListener;
 
@@ -78,14 +82,12 @@ public class MatrixTableView {
         this.table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         this.table.setPrefHeight(220);
         this.table.setMinHeight(160);
-
         setupSelectionListener();
     }
 
     public void rebuild(Graph graph) {
         table.getColumns().clear();
         rows.clear();
-
         int n = graph.size();
 
         // Столбец с заголовками строк (номера вершин).
@@ -95,15 +97,14 @@ public class MatrixTableView {
         rowHeaderCol.setReorderable(false);
         rowHeaderCol.setPrefWidth(50);
         rowHeaderCol.setStyle("-fx-background-color: #eceff1; -fx-font-weight: bold;");
-        rowHeaderCol.setCellValueFactory(cell -> {
-            int idx = rows.indexOf(cell.getValue());
-            return new SimpleStringProperty(idx >= 0 ? String.valueOf(idx) : "");
-        });
+
+        rowHeaderCol.setCellValueFactory(cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getIndex())));
+
         table.getColumns().add(rowHeaderCol);
 
         // Создаём строки данных.
         for (int i = 0; i < n; i++) {
-            Row row = new Row(n);
+            Row row = new Row(i, n);
             for (int j = 0; j < n; j++) {
                 Integer v = graph.get(i, j);
                 row.getCells().get(j).set((v == null) ? "inf" : String.valueOf(v));
@@ -119,6 +120,7 @@ public class MatrixTableView {
             col.setResizable(false);
             col.setPrefWidth(56);
             col.setReorderable(false);
+
             col.setCellValueFactory(cell -> {
                 Row r = cell.getValue();
                 if (r == null || colIndex >= r.getCells().size()) {
@@ -131,12 +133,10 @@ public class MatrixTableView {
                 col.setCellFactory(tv -> makeEditableCell(colIndex));
                 col.setOnEditCommit(e -> {
                     Row r = e.getRowValue();
-                    int i = rows.indexOf(r);
-                    if (i >= 0) {
-                        r.getCells().get(colIndex).set(e.getNewValue());
-                        if (editListener != null) {
-                            editListener.onCellEdited(i, colIndex, e.getNewValue());
-                        }
+                    int i = r.getIndex();
+
+                    if (editListener != null) {
+                        editListener.onCellEdited(i, colIndex, e.getNewValue());
                     }
                 });
             } else {
@@ -162,6 +162,9 @@ public class MatrixTableView {
                 }
                 setText(item);
                 int i = getIndex();
+
+                setEditable(editable && i != j);
+
                 applyHighlight(this, i, j);
             }
         };
@@ -172,12 +175,6 @@ public class MatrixTableView {
             if (i >= 0 && i < rows.size() && selectionListener != null) {
                 selectionListener.onCellSelected(i, j);
             }
-        });
-
-        // Диагональ не редактируется.
-        cell.indexProperty().addListener((obs, oldI, newI) -> {
-            int i = newI.intValue();
-            cell.setEditable(editable && i != j);
         });
 
         return cell;
@@ -231,23 +228,39 @@ public class MatrixTableView {
     }
 
     private void setupSelectionListener() {
-        table.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> {
+        Runnable updateSelection = () -> {
             if (selectionListener == null)
                 return;
-            if (sel == null) {
+
+            @SuppressWarnings("unchecked")
+            javafx.scene.control.TablePosition<Row, ?> pos = table.getFocusModel().getFocusedCell();
+
+            if (pos == null || (pos.getRow() < 0 && pos.getColumn() <= 0)) {
                 selectionListener.onSelectionCleared();
                 return;
             }
-            int i = rows.indexOf(sel);
-            int j = table.getFocusModel().getFocusedCell().getColumn() - 1;
-            if (i >= 0) {
-                if (j >= 0) {
-                    selectionListener.onCellSelected(i, j);
-                } else {
-                    selectionListener.onRowHeaderSelected(i);
-                }
+
+            // Column header selected (row < 0)
+            if (pos.getRow() < 0) {
+                selectionListener.onColumnHeaderSelected(pos.getColumn() - 1);
+                return;
             }
-        });
+
+            int i = pos.getRow();
+            int j = pos.getColumn() - 1;
+            // -1 because the first column is the row header
+
+            if (j >= 0) {
+                selectionListener.onCellSelected(i, j);
+            } else {
+                selectionListener.onRowHeaderSelected(i);
+            }
+        };
+
+        // Listen to both focus changes (moving between cells) and selection changes
+        // (clearing via ESC or click elsewhere)
+        table.getFocusModel().focusedCellProperty().addListener((obs, oldPos, newPos) -> updateSelection.run());
+        table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> updateSelection.run());
     }
 
     public TableView<Row> getNode() {
