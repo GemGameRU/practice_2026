@@ -4,6 +4,8 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.geometry.Pos;
+import javafx.scene.control.Label;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
@@ -115,7 +117,25 @@ public class MatrixTableView {
         // Столбцы вершин.
         for (int j = 0; j < n; j++) {
             final int colIndex = j;
-            TableColumn<Row, String> col = new TableColumn<>(String.valueOf(j));
+            
+            // Создаем столбец без текста, текст будет в graphic
+            TableColumn<Row, String> col = new TableColumn<>();
+            
+            // Создаем Label, который займет всю область заголовка и будет ловить клики
+            Label headerLabel = new Label(String.valueOf(j));
+            headerLabel.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE); // Растягиваем на всю ширину/высоту
+            headerLabel.setAlignment(Pos.CENTER);
+            
+            // Обработчик клика по заголовку столбца
+            headerLabel.setOnMouseClicked(e -> {
+                if (selectionListener != null) {
+                    selectionListener.onColumnHeaderSelected(colIndex);
+                }
+                // Очищаем стандартное выделение ячеек, чтобы избежать конфликтов состояний
+                table.getSelectionModel().clearSelection();
+            });
+            
+            col.setGraphic(headerLabel);
             col.setSortable(false);
             col.setResizable(false);
             col.setPrefWidth(56);
