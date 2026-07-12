@@ -74,6 +74,7 @@ public class MatrixTableView {
         this.table = new TableView<>();
         this.table.setEditable(editable);
         this.table.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+        this.table.getSelectionModel().setCellSelectionEnabled(true);
         this.table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         this.table.setPrefHeight(220);
         this.table.setMinHeight(160);
