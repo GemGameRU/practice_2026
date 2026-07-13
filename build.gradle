@@ -4,51 +4,42 @@ plugins {
     id 'org.openjfx.javafxplugin' version '0.1.0'
 }
 
-javafx {
-    version = "21.0.2"
-    modules = [ 'javafx.controls', 'javafx.fxml' ]
-}
-
+group = 'com.floydwarshall'
 version = '1.0-prototype'
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
+}
+
+javafx {
+    version = "21.0.2"
+    modules = [ 'javafx.controls', 'javafx.fxml' ]
 }
 
 repositories {
     mavenCentral()
 }
 
-def javafxVersion = '21.0.2'
-
 dependencies {
-    implementation "org.openjfx:javafx-base:${javafxVersion}:win"
-    implementation "org.openjfx:javafx-controls:${javafxVersion}:win"
-    implementation "org.openjfx:javafx-graphics:${javafxVersion}:win"
-    implementation "org.openjfx:javafx-fxml:${javafxVersion}:win"
-    
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.0'
 }
 
 application {
-    mainClass = 'com.floydwarshall.App'
-}
-
-run {
-    mainClass = 'com.floydwarshall.App'
-    jvmArgs = [
-        '--module-path', configurations.runtimeClasspath.asPath,
-        '--add-modules', 'javafx.controls,javafx.fxml'
-    ]
+    // Unified to Launcher to prevent "JavaFX runtime components are missing" errors
+    mainClass = 'com.floydwarshall.Launcher'
 }
 
 test {
     useJUnitPlatform()
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'com.floydwarshall.Launcher'
+    }
 }
 
 task fatJar(type: Jar) {
@@ -56,7 +47,6 @@ task fatJar(type: Jar) {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     
     manifest {
-        // IMPORTANT: Point to Launcher, not App
         attributes 'Main-Class': 'com.floydwarshall.Launcher'
     }
     
@@ -64,15 +54,8 @@ task fatJar(type: Jar) {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
     
-    // Exclude module-info to prevent conflicts
+    // Exclude signatures and module-info to prevent conflicts and security exceptions
     exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA', '**/module-info.class'
     
     with jar
-}
-
-// Standard JAR configuration
-jar {
-    manifest {
-        attributes 'Main-Class': 'com.floydwarshall.Launcher'
-    }
 }
