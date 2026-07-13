@@ -1,6 +1,12 @@
 plugins {
     id 'java'
     id 'application'
+    id 'org.openjfx.javafxplugin' version '0.1.0'
+}
+
+javafx {
+    version = "21.0.2"
+    modules = [ 'javafx.controls', 'javafx.fxml' ]
 }
 
 version = '1.0-prototype'
@@ -45,9 +51,28 @@ test {
     useJUnitPlatform()
 }
 
+task fatJar(type: Jar) {
+    archiveClassifier = 'all' 
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    
+    manifest {
+        // IMPORTANT: Point to Launcher, not App
+        attributes 'Main-Class': 'com.floydwarshall.Launcher'
+    }
+    
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    
+    // Exclude module-info to prevent conflicts
+    exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA', '**/module-info.class'
+    
+    with jar
+}
+
+// Standard JAR configuration
 jar {
     manifest {
-        attributes 'Main-Class': 'com.floydwarshall.App'
+        attributes 'Main-Class': 'com.floydwarshall.Launcher'
     }
-
 }
