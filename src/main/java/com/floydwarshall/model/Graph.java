@@ -38,6 +38,9 @@ public class Graph {
         if (i == j) {
             return; // диагональ не редактируется
         }
+        if (v != null && v <= 0) {
+            throw new IllegalArgumentException("Вес ребра должен быть положительным");
+        }
         matrix[i][j] = v;
     }
 

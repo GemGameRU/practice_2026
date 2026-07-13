@@ -209,6 +209,11 @@ public class Controller {
         } else {
             try {
                 v = Integer.parseInt(newValue.trim());
+                if (v <= 0) {
+                    logger.log(Logger.Type.ERROR, "Вес ребра должен быть положительным (ячейка " + i + ", " + j + ")");
+                    table1.rebuild(inputGraph);
+                    return;
+                }
             } catch (NumberFormatException e) {
                 logger.log(Logger.Type.ERROR, "Некорректное значение ячейки (" + i + ", " + j + "): " + newValue);
                 // Восстанавливаем предыдущее значение в таблице.
