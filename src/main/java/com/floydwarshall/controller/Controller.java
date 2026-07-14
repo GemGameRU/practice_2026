@@ -2,22 +2,23 @@ package com.floydwarshall.controller;
 
 import com.floydwarshall.logging.Logger;
 import com.floydwarshall.model.FloydWarshall;
+import com.floydwarshall.model.FloydWarshallExecutor;
 import com.floydwarshall.model.Graph;
 import com.floydwarshall.view.ControlPanel;
 import com.floydwarshall.view.GraphCanvas;
 import com.floydwarshall.view.MatrixTableView;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
+import javafx.util.Duration;
 
 public class Controller {
-
     private enum State {
-        WAITING_INPUT, ALGORITHM_FINISHED
+        WAITING_INPUT, ALGORITHM_PAUSED, ALGORITHM_FINISHED
     }
 
     private State state = State.WAITING_INPUT;
-
     private final Graph inputGraph;
-    private final Graph resultGraph; // состояние таблицы 2 / холста 2
-
+    private final Graph resultGraph;
     private final GraphCanvas canvas1;
     private final GraphCanvas canvas2;
     private final MatrixTableView table1;
@@ -25,8 +26,17 @@ public class Controller {
     private final ControlPanel controlPanel;
     private final Logger logger;
 
-    // Поле описания шага обновляется через этот интерфейс.
     private StepDescriptionUpdater stepDescriptionUpdater;
+
+    // Состояние алгоритма
+    private FloydWarshallExecutor executor;
+    private int currentStep = 0;
+    private int totalSteps = 0;
+
+    // Автоматическое выполнение
+    private boolean isAutoPlaying = false;
+    private Timeline autoPlayTimeline;
+    private double currentSpeed = 1.0; // 0.5, 1, 2, 4
 
     public interface StepDescriptionUpdater {
         void update(String text);
@@ -45,24 +55,22 @@ public class Controller {
         this.table2 = table2;
         this.controlPanel = controlPanel;
         this.logger = logger;
-
         wire();
+        updateButtonsState(); // Инициализация состояния кнопок
     }
 
     public void setStepDescriptionUpdater(StepDescriptionUpdater u) {
         this.stepDescriptionUpdater = u;
     }
 
+    // Публичный метод для обработки клавиши "→"
+    public void stepForward() {
+        doStepForward();
+    }
+
     private void wire() {
-        // Панель управления.
         controlPanel.setListener(this::onButton);
-
-        // Редактирование таблицы 1 → перерисовка холста 1, сброс алгоритма.
-        table1.setEditListener((i, j, newValue) -> {
-            applyCellEdit(i, j, newValue);
-        });
-
-        // Выделение на холстах синхронизируется с таблицами и наоборот.
+        table1.setEditListener((i, j, newValue) -> applyCellEdit(i, j, newValue));
         wireSelectionSync(canvas1, table1, canvas2, table2);
         wireSelectionSync(canvas2, table2, canvas1, table1);
     }
@@ -72,9 +80,9 @@ public class Controller {
         canvas.setSelectionListener((type, a, b) -> {
             otherTable.clearSelectionSync();
             if (type == GraphCanvas.SelectionType.VERTEX) {
-                // Подсветка вершины в таблице (полная реализация — в версии 1)
+                // Подсветка вершины в таблице
             } else if (type == GraphCanvas.SelectionType.EDGE) {
-                // Подсветка ребра в таблице (полная реализация — в версии 1)
+                // Подсветка ребра в таблице
             } else {
                 table.clearSelectionSync();
             }
@@ -105,57 +113,201 @@ public class Controller {
 
     private void onButton(ControlPanel.ButtonId id) {
         switch (id) {
+            case STEP_FORWARD -> doStepForward();
+            case STEP_N -> doStepN();
             case START_PAUSE -> doStartPause();
+            case SPEED -> doChangeSpeed();
             case RESET -> doReset();
             case ADD_VERTEX -> doAddVertex();
             case REMOVE_VERTEX -> doRemoveVertex();
-            case STEP_FORWARD, STEP_BACK, STEP_N, SPEED, LOAD_FILE, SAVE ->
-                logger.log(Logger.Type.INFO, "Кнопка «" + id + "» неактивна в прототипе");
+            case STEP_BACK -> logger.log(Logger.Type.INFO, "Кнопка «Шаг назад» будет доступна в Версии 2");
+            case LOAD_FILE, SAVE -> logger.log(Logger.Type.INFO, "Ввод/Сохранение файлов будет реализовано далее");
+        }
+    }
+
+    private void doStepForward() {
+        if (state == State.ALGORITHM_FINISHED)
+            return;
+
+        if (state == State.WAITING_INPUT) {
+            Integer[][] source = table1.toMatrix();
+            inputGraph.replaceMatrix(source);
+            resultGraph.replaceMatrix(source);
+            executor = new FloydWarshallExecutor(source);
+            currentStep = 0;
+            totalSteps = FloydWarshall.totalSteps(inputGraph.size());
+            state = State.ALGORITHM_PAUSED;
+            logger.log(Logger.Type.STATE, "Алгоритм запущен");
+        }
+
+        if (executor.isFinished()) {
+            state = State.ALGORITHM_FINISHED;
+            updateButtonsState();
+            stepDescriptionUpdater.update("Алгоритм завершён");
+            logger.log(Logger.Type.STATE, "Алгоритм завершён (всего шагов: " + totalSteps + ")");
+            return;
+        }
+
+        currentStep++;
+        FloydWarshallExecutor.StepResult res = executor.stepForward();
+
+        resultGraph.replaceMatrix(res.dist());
+        table2.rebuild(resultGraph);
+        table2.setAlgorithmHighlight(res.i(), res.j(), res.k());
+        canvas2.setGraph(resultGraph);
+        canvas2.setAlgorithmHighlight(res.i(), res.j(), res.k());
+
+        updateStepDescription(res);
+        logger.log(Logger.Type.STATE, String.format("Шаг %d: k=%d, i=%d, j=%d, D[%d][%d] %s",
+                currentStep, res.k(), res.i(), res.j(), res.i(), res.j(),
+                res.wasUpdate() ? "обновлено " + res.oldValue() + " → " + res.altValue() : "не обновлено"));
+
+        if (executor.isFinished()) {
+            state = State.ALGORITHM_FINISHED;
+            logger.log(Logger.Type.STATE, "Алгоритм завершён (всего шагов: " + totalSteps + ")");
+        }
+        updateButtonsState();
+    }
+
+    private void updateStepDescription(FloydWarshallExecutor.StepResult res) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Шаг ").append(currentStep).append(" из ").append(totalSteps).append("\n");
+        sb.append("k = ").append(res.k()).append(", i = ").append(res.i()).append(", j = ").append(res.j())
+                .append("\n");
+
+        String oldStr = (res.oldValue() == null) ? "inf" : String.valueOf(res.oldValue());
+        if (res.altValue() != null) {
+            String dikStr = (res.dik() == null) ? "inf" : String.valueOf(res.dik());
+            String dkjStr = (res.dkj() == null) ? "inf" : String.valueOf(res.dkj());
+
+            sb.append("Сравниваем: D[").append(res.i()).append("][").append(res.j()).append("] = ").append(oldStr)
+                    .append("  и  D[").append(res.i()).append("][").append(res.k()).append("] + D[").append(res.k())
+                    .append("][").append(res.j()).append("] = ")
+                    .append(dikStr).append(" + ").append(dkjStr).append(" = ").append(res.altValue()).append("\n");
+
+            if (res.wasUpdate()) {
+                sb.append("Результат: ").append(res.altValue()).append(" < ").append(oldStr).append(" — обновлено\n");
+                sb.append("Описание: путь из вершины ").append(res.i()).append(" в вершину ").append(res.j())
+                        .append(" через вершину ").append(res.k()).append(" короче текущего; значение D[")
+                        .append(res.i()).append("][").append(res.j()).append("] заменено на ").append(res.altValue())
+                        .append(".");
+            } else {
+                sb.append("Результат: ").append(res.altValue()).append(" >= ").append(oldStr)
+                        .append(" — не обновлено\n");
+                sb.append("Описание: путь через вершину ").append(res.k()).append(" не короче текущего.");
+            }
+        } else {
+            sb.append("Сравниваем: D[").append(res.i()).append("][").append(res.j()).append("] = ").append(oldStr)
+                    .append("\n");
+            sb.append("Результат: путь через k=").append(res.k()).append(" невозможен\n");
+            sb.append("Описание: ").append(res.description());
+        }
+        stepDescriptionUpdater.update(sb.toString());
+    }
+
+    private void doStepN() {
+        int n = controlPanel.getStepN();
+        for (int count = 0; count < n; count++) {
+            if (state == State.ALGORITHM_FINISHED)
+                break;
+
+            if (executor != null && executor.isFinished())
+                break;
+
+            doStepForward();
         }
     }
 
     private void doStartPause() {
-        if (state == State.ALGORITHM_FINISHED) {
-            logger.log(Logger.Type.INFO, "Алгоритм уже завершён. Нажмите «Сброс» для перезапуска.");
+        if (state == State.ALGORITHM_FINISHED)
             return;
+
+        if (isAutoPlaying) {
+            if (autoPlayTimeline != null)
+                autoPlayTimeline.pause();
+            isAutoPlaying = false;
+            controlPanel.setStartPauseLabel("Пуск");
+            logger.log(Logger.Type.STATE, "Пауза на шаге " + currentStep);
+        } else {
+            if (state == State.WAITING_INPUT)
+                doStepForward();
+            if (state == State.ALGORITHM_FINISHED)
+                return;
+
+            isAutoPlaying = true;
+            controlPanel.setStartPauseLabel("Пауза");
+            logger.log(Logger.Type.STATE, "Автоматическое выполнение возобновлено");
+            startAutoPlayTimeline();
         }
-        logger.log(Logger.Type.STATE, "Алгоритм запущен");
+    }
 
-        // Считываем матрицу из таблицы 1.
-        Integer[][] source = table1.toMatrix();
-        int n = inputGraph.size();
-        inputGraph.replaceMatrix(source);
+    private void startAutoPlayTimeline() {
+        double duration = 1000.0 / currentSpeed;
+        autoPlayTimeline = new Timeline(new KeyFrame(Duration.millis(duration), e -> {
+            if (state == State.ALGORITHM_FINISHED || executor.isFinished()) {
+                autoPlayTimeline.stop();
+                isAutoPlaying = false;
+                state = State.ALGORITHM_FINISHED;
+                controlPanel.setStartPauseLabel("Пуск");
+                updateButtonsState();
+                return;
+            }
+            doStepForward();
+        }));
+        autoPlayTimeline.setCycleCount(Timeline.INDEFINITE);
+        autoPlayTimeline.play();
+    }
 
-        // Выполняем алгоритм до конца.
-        Integer[][] result = FloydWarshall.run(source, n);
-        resultGraph.replaceMatrix(result);
+    private void doChangeSpeed() {
+        if (currentSpeed == 0.5)
+            currentSpeed = 1.0;
+        else if (currentSpeed == 1.0)
+            currentSpeed = 2.0;
+        else if (currentSpeed == 2.0)
+            currentSpeed = 4.0;
+        else
+            currentSpeed = 0.5;
 
-        int totalSteps = FloydWarshall.totalSteps(n);
+        logger.log(Logger.Type.ACTION, "Скорость: " + currentSpeed + "x");
 
-        // Отображаем результат.
-        table2.rebuild(resultGraph);
-        canvas2.setGraph(resultGraph);
-        canvas2.clearAlgorithmHighlight();
-
-        stepDescriptionUpdater.update("Алгоритм завершён");
-        logger.log(Logger.Type.STATE, "Алгоритм завершён (всего шагов: " + totalSteps + ")");
-
-        state = State.ALGORITHM_FINISHED;
+        if (isAutoPlaying && autoPlayTimeline != null) {
+            autoPlayTimeline.stop();
+            startAutoPlayTimeline();
+        }
     }
 
     private void doReset() {
+        if (autoPlayTimeline != null)
+            autoPlayTimeline.stop();
+        isAutoPlaying = false;
+
         Integer[][] source = table1.toMatrix();
         inputGraph.replaceMatrix(source);
         resultGraph.replaceMatrix(source);
-
         table2.rebuild(resultGraph);
         canvas2.setGraph(resultGraph);
         canvas2.clearAlgorithmHighlight();
-
+        table2.clearAlgorithmHighlight();
         stepDescriptionUpdater.update("Алгоритм не запущен");
         logger.log(Logger.Type.ACTION, "Алгоритм сброшен");
 
         state = State.WAITING_INPUT;
+        executor = null;
+        currentStep = 0;
+        updateButtonsState();
+    }
+
+    private void resetAlgorithmState() {
+        if (autoPlayTimeline != null)
+            autoPlayTimeline.stop();
+        isAutoPlaying = false;
+        state = State.WAITING_INPUT;
+        executor = null;
+        currentStep = 0;
+        canvas2.clearAlgorithmHighlight();
+        table2.clearAlgorithmHighlight();
+        stepDescriptionUpdater.update("Алгоритм не запущен");
+        updateButtonsState();
     }
 
     private void doAddVertex() {
@@ -166,17 +318,12 @@ public class Controller {
             return;
         }
         int newVertex = inputGraph.size() - 1;
-        // Копируем граф в результат.
         resultGraph.replaceMatrix(inputGraph.snapshot());
-
         rebuildAll();
         canvas1.setGraph(inputGraph);
         canvas2.setGraph(resultGraph);
-        canvas2.clearAlgorithmHighlight();
-
-        stepDescriptionUpdater.update("Алгоритм не запущен");
         logger.log(Logger.Type.ACTION, "Добавлена вершина " + newVertex);
-        state = State.WAITING_INPUT;
+        resetAlgorithmState();
     }
 
     private void doRemoveVertex() {
@@ -189,20 +336,16 @@ public class Controller {
             return;
         }
         resultGraph.replaceMatrix(inputGraph.snapshot());
-
         rebuildAll();
         canvas1.setGraph(inputGraph);
         canvas2.setGraph(resultGraph);
-        canvas2.clearAlgorithmHighlight();
-
-        stepDescriptionUpdater.update("Алгоритм не запущен");
         logger.log(Logger.Type.ACTION, "Удалена вершина " + toRemove);
-        state = State.WAITING_INPUT;
+        resetAlgorithmState();
     }
 
     private void applyCellEdit(int i, int j, String newValue) {
         if (i == j)
-            return; // диагональ не редактируется
+            return;
         Integer v;
         if (newValue == null || newValue.trim().isEmpty() || newValue.trim().equalsIgnoreCase("inf")) {
             v = null;
@@ -216,23 +359,38 @@ public class Controller {
                 }
             } catch (NumberFormatException e) {
                 logger.log(Logger.Type.ERROR, "Некорректное значение ячейки (" + i + ", " + j + "): " + newValue);
-                // Восстанавливаем предыдущее значение в таблице.
                 table1.rebuild(inputGraph);
                 return;
             }
         }
         inputGraph.set(i, j, v);
         resultGraph.replaceMatrix(inputGraph.snapshot());
-
         canvas1.setGraph(inputGraph);
         canvas2.setGraph(resultGraph);
-        canvas2.clearAlgorithmHighlight();
         table2.rebuild(resultGraph);
-
-        // Любое изменение сбрасывает алгоритм.
-        state = State.WAITING_INPUT;
-        stepDescriptionUpdater.update("Алгоритм не запущен");
         logger.log(Logger.Type.ACTION, "Ячейка (" + i + ", " + j + ") изменена: " + (v == null ? "inf" : v));
+        resetAlgorithmState();
+    }
+
+    private void updateButtonsState() {
+        boolean isFinished = (state == State.ALGORITHM_FINISHED);
+
+        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_FORWARD, !isFinished);
+        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_N, !isFinished);
+        controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, !isFinished);
+        controlPanel.setEnabled(ControlPanel.ButtonId.RESET, true);
+        controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, true);
+        controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, true);
+        controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, true);
+        controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, true);
+        controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, !isFinished);
+        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_BACK, false); // Версия 2
+
+        if (isAutoPlaying) {
+            controlPanel.setStartPauseLabel("Пауза");
+        } else {
+            controlPanel.setStartPauseLabel("Пуск");
+        }
     }
 
     private void rebuildAll() {

@@ -1,10 +1,8 @@
 package com.floydwarshall.model;
 
 public final class FloydWarshallExecutor {
-
     private final Integer[][] dist;
     private final int n;
-
     private int k;
     private int i;
     private int j;
@@ -21,37 +19,37 @@ public final class FloydWarshallExecutor {
 
     public StepResult stepForward() {
         if (isFinished) {
-            return new StepResult(k, i, j, false, "Алгоритм завершён", dist);
+            return new StepResult(k, i, j, false, null, null, null, null, "Алгоритм завершён", dist);
         }
 
+        int currK = k, currI = i, currJ = j;
+        Integer oldValue = dist[i][j];
+        Integer dik = dist[i][k];
+        Integer dkj = dist[k][j];
+        Integer altValue = null;
         boolean wasUpdate = false;
         String description;
 
-        if (dist[i][k] == null) {
-            description = String.format("Нет пути из %d в %d. Пропускаем все j для этой пары.", i, k);
-            i++;
-            j = 0;
-        }
-        else if (dist[k][j] == null) {
-            description = String.format("Нет пути из %d в %d. Пропускаем проверку.", k, j);
-            wasUpdate = false;
-            j++;
-        }
-        else {
-            int alt = dist[i][k] + dist[k][j];
-
-            if (dist[i][j] == null || alt < dist[i][j]) {
-                dist[i][j] = alt;
-                wasUpdate = true;
-                description = String.format("Путь %d → %d через %d стал короче (новый вес: %d)", i, j, k, alt);
-            }             
-            else {
-                wasUpdate = false;
-                description = String.format("Путь %d → %d через %d (вес: %d) не короче текущего (%d).", i, j, k, alt, dist[i][j]);
+        if (dik == null || dkj == null) {
+            if (dik == null) {
+                description = String.format("Нет пути из %d в %d. Обновление невозможно.", i, k);
+            } else {
+                description = String.format("Нет пути из %d в %d. Обновление невозможно.", k, j);
             }
-            j++;
+        } else {
+            altValue = dik + dkj;
+            if (oldValue == null || altValue < oldValue) {
+                dist[i][j] = altValue;
+                wasUpdate = true;
+                description = String.format("Путь %d → %d через %d стал короче (новый вес: %d)", i, j, k, altValue);
+            } else {
+                description = String.format("Путь %d → %d через %d (вес: %d) не короче текущего (%d).", i, j, k,
+                        altValue, oldValue);
+            }
         }
 
+        // Инкремент индексов
+        j++;
         if (j == n) {
             j = 0;
             i++;
@@ -64,7 +62,7 @@ public final class FloydWarshallExecutor {
             isFinished = true;
         }
 
-        return new StepResult(k, i, j, wasUpdate, description, dist);
+        return new StepResult(currK, currI, currJ, wasUpdate, oldValue, altValue, dik, dkj, description, dist);
     }
 
     public boolean isFinished() {
@@ -72,11 +70,13 @@ public final class FloydWarshallExecutor {
     }
 
     public record StepResult(
-        int k,
-        int i,
-        int j,
-        boolean wasUpdate,
-        String description,
-        Integer[][] dist
-    ) {}
+            int k, int i, int j,
+            boolean wasUpdate,
+            Integer oldValue,
+            Integer altValue,
+            Integer dik,
+            Integer dkj,
+            String description,
+            Integer[][] dist) {
+    }
 }
