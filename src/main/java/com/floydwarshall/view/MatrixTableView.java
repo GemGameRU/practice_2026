@@ -5,11 +5,7 @@ import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Pos;
-import javafx.scene.control.Label;
-import javafx.scene.control.SelectionMode;
-import javafx.scene.control.TableCell;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
+import javafx.scene.control.*;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.util.StringConverter;
 
@@ -71,7 +67,6 @@ public class MatrixTableView {
     private CellEditListener editListener;
     private CellSelectionListener selectionListener;
 
-    // Подсветка алгоритма: (i,j), (i,k), (k,j)
     private int hlI = -1, hlJ = -1, hlK = -1;
 
     public MatrixTableView(boolean editable) {
@@ -81,7 +76,8 @@ public class MatrixTableView {
         this.table.setEditable(editable);
         this.table.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
         this.table.getSelectionModel().setCellSelectionEnabled(true);
-        this.table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+        // Use UNCONSTRAINED policy so that horizontal scrollbar appears when needed
+        this.table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         this.table.setPrefHeight(220);
         this.table.setMinHeight(160);
         setupSelectionListener();
@@ -92,19 +88,16 @@ public class MatrixTableView {
         rows.clear();
         int n = graph.size();
 
-        // Столбец с заголовками строк (номера вершин).
+        // Row header column
         TableColumn<Row, String> rowHeaderCol = new TableColumn<>("v \\ v");
         rowHeaderCol.setSortable(false);
         rowHeaderCol.setResizable(false);
         rowHeaderCol.setReorderable(false);
         rowHeaderCol.setPrefWidth(50);
-        rowHeaderCol.getStyleClass().add("column-header");
-
         rowHeaderCol.setCellValueFactory(cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getIndex())));
-
         table.getColumns().add(rowHeaderCol);
 
-        // Создаём строки данных.
+        // Data rows
         for (int i = 0; i < n; i++) {
             Row row = new Row(i, n);
             for (int j = 0; j < n; j++) {
@@ -114,27 +107,19 @@ public class MatrixTableView {
             rows.add(row);
         }
 
-        // Столбцы вершин.
+        // Data columns
         for (int j = 0; j < n; j++) {
             final int colIndex = j;
 
-            // Создаем столбец без текста, текст будет в graphic
             TableColumn<Row, String> col = new TableColumn<>();
-
-            // Создаем Label, который займет всю область заголовка и будет ловить клики
             Label headerLabel = new Label(String.valueOf(j));
-            headerLabel.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE); // Растягиваем на всю ширину/высоту
+            headerLabel.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
             headerLabel.setAlignment(Pos.CENTER);
-
-            // Обработчик клика по заголовку столбца
             headerLabel.setOnMouseClicked(e -> {
-                if (selectionListener != null) {
+                if (selectionListener != null)
                     selectionListener.onColumnHeaderSelected(colIndex);
-                }
-                // Очищаем стандартное выделение ячеек, чтобы избежать конфликтов состояний
                 table.getSelectionModel().clearSelection();
             });
-
             col.setGraphic(headerLabel);
             col.setSortable(false);
             col.setResizable(false);
@@ -143,9 +128,8 @@ public class MatrixTableView {
 
             col.setCellValueFactory(cell -> {
                 Row r = cell.getValue();
-                if (r == null || colIndex >= r.getCells().size()) {
+                if (r == null || colIndex >= r.getCells().size())
                     return new SimpleStringProperty("");
-                }
                 return r.getCells().get(colIndex);
             });
 
@@ -154,10 +138,8 @@ public class MatrixTableView {
                 col.setOnEditCommit(e -> {
                     Row r = e.getRowValue();
                     int i = r.getIndex();
-
-                    if (editListener != null) {
+                    if (editListener != null)
                         editListener.onCellEdited(i, colIndex, e.getNewValue());
-                    }
                 });
             } else {
                 col.setCellFactory(tv -> makeReadOnlyCell(colIndex));
@@ -165,8 +147,7 @@ public class MatrixTableView {
             table.getColumns().add(col);
         }
 
-        ObservableList<Row> data = FXCollections.observableArrayList(rows);
-        table.setItems(data);
+        table.setItems(FXCollections.observableArrayList(rows));
         table.refresh();
     }
 
@@ -182,21 +163,15 @@ public class MatrixTableView {
                 }
                 setText(item);
                 int i = getIndex();
-
                 setEditable(editable && i != j);
-
                 applyHighlight(this, i, j);
             }
         };
-
-        // Клик по ячейке → уведомление о выделении.
         cell.setOnMousePressed(e -> {
             int i = cell.getIndex();
-            if (i >= 0 && i < rows.size() && selectionListener != null) {
+            if (i >= 0 && i < rows.size() && selectionListener != null)
                 selectionListener.onCellSelected(i, j);
-            }
         });
-
         return cell;
     }
 
@@ -251,34 +226,24 @@ public class MatrixTableView {
         Runnable updateSelection = () -> {
             if (selectionListener == null)
                 return;
-
             @SuppressWarnings("unchecked")
-            javafx.scene.control.TablePosition<Row, ?> pos = table.getFocusModel().getFocusedCell();
-
+            TablePosition<Row, ?> pos = table.getFocusModel().getFocusedCell();
             if (pos == null || (pos.getRow() < 0 && pos.getColumn() <= 0)) {
                 selectionListener.onSelectionCleared();
                 return;
             }
-
-            // Column header selected (row < 0)
             if (pos.getRow() < 0) {
                 selectionListener.onColumnHeaderSelected(pos.getColumn() - 1);
                 return;
             }
-
             int i = pos.getRow();
             int j = pos.getColumn() - 1;
-            // -1 because the first column is the row header
-
             if (j >= 0) {
                 selectionListener.onCellSelected(i, j);
             } else {
                 selectionListener.onRowHeaderSelected(i);
             }
         };
-
-        // Listen to both focus changes (moving between cells) and selection changes
-        // (clearing via ESC or click elsewhere)
         table.getFocusModel().focusedCellProperty().addListener((obs, oldPos, newPos) -> updateSelection.run());
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> updateSelection.run());
     }
