@@ -36,7 +36,7 @@ public class Controller {
     // Автоматическое выполнение
     private boolean isAutoPlaying = false;
     private Timeline autoPlayTimeline;
-    private double currentSpeed = 1.0; // 0.5, 1, 2, 4
+    private double currentSpeed = 1.0;
 
     public interface StepDescriptionUpdater {
         void update(String text);
@@ -55,22 +55,25 @@ public class Controller {
         this.table2 = table2;
         this.controlPanel = controlPanel;
         this.logger = logger;
+
         wire();
-        updateButtonsState(); // Инициализация состояния кнопок
+        updateButtonsState();
     }
 
     public void setStepDescriptionUpdater(StepDescriptionUpdater u) {
         this.stepDescriptionUpdater = u;
     }
 
-    // Публичный метод для обработки клавиши "→"
     public void stepForward() {
         doStepForward();
     }
 
     private void wire() {
         controlPanel.setListener(this::onButton);
+        controlPanel.setSpeedListener(this::onSpeedChanged); // Подключаем слушатель скорости
+
         table1.setEditListener((i, j, newValue) -> applyCellEdit(i, j, newValue));
+
         wireSelectionSync(canvas1, table1, canvas2, table2);
         wireSelectionSync(canvas2, table2, canvas1, table1);
     }
@@ -79,11 +82,10 @@ public class Controller {
             SmartGraphView otherCanvas, MatrixTableView otherTable) {
         canvas.setSelectionListener((type, a, b) -> {
             otherTable.clearSelectionSync();
-
             if (type == SmartGraphView.SelectionType.VERTEX) {
-                table.selectRowHeader(a);
+                table.selectVertex(a); // Выделяем строку и столбец
             } else if (type == SmartGraphView.SelectionType.EDGE) {
-                table.selectCell(a, b);
+                table.selectEdge(a, b); // Выделяем ячейку
             } else {
                 table.clearSelectionSync();
             }
@@ -93,20 +95,24 @@ public class Controller {
             @Override
             public void onCellSelected(int i, int j) {
                 canvas.selectEdge(i, j);
+                table.selectEdge(i, j);
             }
 
             @Override
             public void onRowHeaderSelected(int i) {
                 canvas.selectVertex(i);
+                table.selectVertex(i);
             }
 
             @Override
             public void onColumnHeaderSelected(int j) {
                 canvas.selectVertex(j);
+                table.selectVertex(j);
             }
 
             @Override
             public void onSelectionCleared() {
+                table.clearSelectionSync();
                 canvas.clearSelection();
             }
         });
@@ -117,15 +123,26 @@ public class Controller {
             case STEP_FORWARD -> doStepForward();
             case STEP_N -> doStepN();
             case START_PAUSE -> doStartPause();
-            case SPEED -> doChangeSpeed();
             case RESET -> doReset();
             case ADD_VERTEX -> doAddVertex();
             case REMOVE_VERTEX -> doRemoveVertex();
             case STEP_BACK -> logger.log(Logger.Type.INFO, "Кнопка «Шаг назад» будет доступна в Версии 2");
-            // Работа с файлами сознательно исключена из Версии 1 (по заданию).
-            // Кнопки «Ввод из файла» и «Сохранение» остаются неактивными.
-            case LOAD_FILE, SAVE -> {
-                /* не реализовано в данной версии */ }
+            case LOAD_FILE, SAVE, SPEED -> {
+            }
+        }
+    }
+
+    private void onSpeedChanged(String speedStr) {
+        try {
+            String val = speedStr.replace("x", "");
+            currentSpeed = Double.parseDouble(val);
+            logger.log(Logger.Type.ACTION, "Скорость: " + currentSpeed + "x");
+            if (isAutoPlaying && autoPlayTimeline != null) {
+                autoPlayTimeline.stop();
+                startAutoPlayTimeline();
+            }
+        } catch (Exception e) {
+            logger.log(Logger.Type.ERROR, "Некорректное значение скорости: " + speedStr);
         }
     }
 
@@ -154,10 +171,11 @@ public class Controller {
 
         currentStep++;
         FloydWarshallExecutor.StepResult res = executor.stepForward();
-
         resultGraph.replaceMatrix(res.dist());
+
         table2.rebuild(resultGraph);
         table2.setAlgorithmHighlight(res.i(), res.j(), res.k());
+
         canvas2.setGraph(resultGraph);
         canvas2.setAlgorithmHighlight(res.i(), res.j(), res.k());
 
@@ -183,7 +201,6 @@ public class Controller {
         if (res.altValue() != null) {
             String dikStr = (res.dik() == null) ? "inf" : String.valueOf(res.dik());
             String dkjStr = (res.dkj() == null) ? "inf" : String.valueOf(res.dkj());
-
             sb.append("Сравниваем: D[").append(res.i()).append("][").append(res.j()).append("] = ").append(oldStr)
                     .append("  и  D[").append(res.i()).append("][").append(res.k()).append("] + D[").append(res.k())
                     .append("][").append(res.j()).append("] = ")
@@ -216,7 +233,6 @@ public class Controller {
             return;
         }
 
-        // Если алгоритм ещё не запущен — инициализируем его (один шаг инициализации).
         if (state == State.WAITING_INPUT) {
             Integer[][] source = table1.toMatrix();
             inputGraph.replaceMatrix(source);
@@ -228,30 +244,22 @@ public class Controller {
             logger.log(Logger.Type.STATE, "Алгоритм запущен");
         }
 
-        if (state == State.ALGORITHM_FINISHED) {
+        if (state == State.ALGORITHM_FINISHED)
             return;
-        }
 
-        // Выполняем N шагов БЕЗ промежуточных обновлений UI —
-        // согласно спецификации Версии 1: «результат отображается только
-        // после завершения всех N шагов».
         FloydWarshallExecutor.StepResult lastRes = null;
         int performed = 0;
         for (int count = 0; count < n; count++) {
-            if (executor.isFinished()) {
+            if (executor.isFinished())
                 break;
-            }
             currentStep++;
             lastRes = executor.stepForward();
             performed++;
         }
 
-        if (lastRes == null) {
-            // Ничего не было выполнено (алгоритм уже завершён до цикла).
+        if (lastRes == null)
             return;
-        }
 
-        // Обновляем UI один раз — финальным состоянием.
         resultGraph.replaceMatrix(lastRes.dist());
         table2.rebuild(resultGraph);
         table2.setAlgorithmHighlight(lastRes.i(), lastRes.j(), lastRes.k());
@@ -263,8 +271,7 @@ public class Controller {
                 "Шаг N: выполнено %d шаг(ов), текущий шаг %d из %d (k=%d, i=%d, j=%d, D[%d][%d] %s)",
                 performed, currentStep, totalSteps, lastRes.k(), lastRes.i(), lastRes.j(),
                 lastRes.i(), lastRes.j(),
-                lastRes.wasUpdate() ? "обновлено " + lastRes.oldValue() + " → " + lastRes.altValue()
-                        : "не обновлено"));
+                lastRes.wasUpdate() ? "обновлено " + lastRes.oldValue() + " → " + lastRes.altValue() : "не обновлено"));
 
         if (executor.isFinished()) {
             state = State.ALGORITHM_FINISHED;
@@ -313,24 +320,6 @@ public class Controller {
         autoPlayTimeline.play();
     }
 
-    private void doChangeSpeed() {
-        if (currentSpeed == 0.5)
-            currentSpeed = 1.0;
-        else if (currentSpeed == 1.0)
-            currentSpeed = 2.0;
-        else if (currentSpeed == 2.0)
-            currentSpeed = 4.0;
-        else
-            currentSpeed = 0.5;
-
-        logger.log(Logger.Type.ACTION, "Скорость: " + currentSpeed + "x");
-
-        if (isAutoPlaying && autoPlayTimeline != null) {
-            autoPlayTimeline.stop();
-            startAutoPlayTimeline();
-        }
-    }
-
     private void doReset() {
         if (autoPlayTimeline != null)
             autoPlayTimeline.stop();
@@ -339,10 +328,12 @@ public class Controller {
         Integer[][] source = table1.toMatrix();
         inputGraph.replaceMatrix(source);
         resultGraph.replaceMatrix(source);
+
         table2.rebuild(resultGraph);
         canvas2.setGraph(resultGraph);
         canvas2.clearAlgorithmHighlight();
         table2.clearAlgorithmHighlight();
+
         stepDescriptionUpdater.update("Алгоритм не запущен");
         logger.log(Logger.Type.ACTION, "Алгоритм сброшен");
 
@@ -359,6 +350,7 @@ public class Controller {
         state = State.WAITING_INPUT;
         executor = null;
         currentStep = 0;
+
         canvas2.clearAlgorithmHighlight();
         table2.clearAlgorithmHighlight();
         stepDescriptionUpdater.update("Алгоритм не запущен");
@@ -401,6 +393,7 @@ public class Controller {
     private void applyCellEdit(int i, int j, String newValue) {
         if (i == j)
             return;
+
         Integer v;
         if (newValue == null || newValue.trim().isEmpty() || newValue.trim().equalsIgnoreCase("inf")) {
             v = null;
@@ -418,45 +411,39 @@ public class Controller {
                 return;
             }
         }
+
         inputGraph.set(i, j, v);
         resultGraph.replaceMatrix(inputGraph.snapshot());
+
         canvas1.setGraph(inputGraph);
         canvas2.setGraph(resultGraph);
+
+        table1.rebuild(inputGraph);
         table2.rebuild(resultGraph);
+
         logger.log(Logger.Type.ACTION, "Ячейка (" + i + ", " + j + ") изменена: " + (v == null ? "inf" : v));
         resetAlgorithmState();
     }
 
     private void updateButtonsState() {
         boolean isFinished = (state == State.ALGORITHM_FINISHED);
-
         controlPanel.setEnabled(ControlPanel.ButtonId.STEP_FORWARD, !isFinished);
         controlPanel.setEnabled(ControlPanel.ButtonId.STEP_N, !isFinished);
         controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, !isFinished);
         controlPanel.setEnabled(ControlPanel.ButtonId.RESET, true);
         controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, true);
         controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, true);
-        // Работа с файлами исключена из Версии 1 — кнопки неактивны.
+
         controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, false);
         controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, false);
         controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, !isFinished);
-        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_BACK, false); // Версия 2
+        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_BACK, false);
 
         if (isAutoPlaying) {
             controlPanel.setStartPauseLabel("Пауза");
         } else {
             controlPanel.setStartPauseLabel("Пуск");
         }
-        // Обновляем подпись кнопки скорости, чтобы пользователь видел текущий
-        // множитель.
-        controlPanel.setSpeedLabel("Скорость " + formatSpeed(currentSpeed) + "x");
-    }
-
-    private static String formatSpeed(double s) {
-        if (s == (int) s) {
-            return String.valueOf((int) s);
-        }
-        return String.valueOf(s);
     }
 
     private void rebuildAll() {

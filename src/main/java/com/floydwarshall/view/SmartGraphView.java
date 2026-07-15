@@ -1,6 +1,5 @@
 package com.floydwarshall.view;
 
-import com.brunomnsilva.smartgraph.containers.ContentZoomScrollPane;
 import com.brunomnsilva.smartgraph.graphview.*;
 import com.brunomnsilva.smartgraph.graph.*;
 import com.floydwarshall.model.Graph;
@@ -68,7 +67,7 @@ public class SmartGraphView extends BorderPane {
         Label titleLabel = new Label(title);
         titleLabel.setStyle("-fx-font-weight: bold; -fx-padding: 5; -fx-font-size: 13px; -fx-text-fill: #37474f;");
         setTop(titleLabel);
-        setCenter(new ContentZoomScrollPane(graphView));
+        setCenter(graphView);
         setAlignment(titleLabel, Pos.CENTER);
         setupInteractions();
     }
