@@ -50,7 +50,12 @@ public class SmartGraphView extends BorderPane {
         this.editableSource = editableSource;
         this.smartGraph = new DigraphEdgeList<>();
         SmartCircularSortedPlacementStrategy placementStrategy = new SmartCircularSortedPlacementStrategy();
-        ForceDirectedLayoutStrategy<Integer> automaticPlacement = new ForceDirectedSpringGravityLayoutStrategy<>();
+        ForceDirectedLayoutStrategy<Integer> automaticPlacement = new ForceDirectedSpringGravityLayoutStrategy<>(
+                20.0,
+                0.1,
+                0.1,
+                0.5,
+                0.01);
         SmartGraphProperties sgp = new SmartGraphProperties(
                 getClass().getResourceAsStream("/smartgraph.properties"));
 
