@@ -10,6 +10,8 @@ import com.floydwarshall.view.MatrixTableView;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.util.Duration;
+import javafx.stage.FileChooser;
+import java.io.File;
 
 public class Controller {
     private enum State {
@@ -126,8 +128,10 @@ public class Controller {
             case RESET -> doReset();
             case ADD_VERTEX -> doAddVertex();
             case REMOVE_VERTEX -> doRemoveVertex();
+            case LOAD_FILE -> doLoadFile(); // <--- NEW
+            case SAVE -> doSaveFile(); // <--- NEW
             case STEP_BACK -> logger.log(Logger.Type.INFO, "Кнопка «Шаг назад» будет доступна в Версии 2");
-            case LOAD_FILE, SAVE, SPEED -> {
+            case SPEED -> {
             }
         }
     }
@@ -425,6 +429,48 @@ public class Controller {
         resetAlgorithmState();
     }
 
+    private void doLoadFile() {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Загрузка графа из файла");
+        fileChooser.getExtensionFilters().addAll(
+                new FileChooser.ExtensionFilter("Graph Files", "*.csv"),
+                new FileChooser.ExtensionFilter("All Files", "*.*"));
+
+        // Get the main window to attach the dialog to it
+        javafx.stage.Window window = canvas1.getScene() != null ? canvas1.getScene().getWindow() : null;
+        File file = fileChooser.showOpenDialog(window);
+
+        if (file != null) {
+            logger.log(Logger.Type.ACTION, "Выбран файл для загрузки: " + file.getAbsolutePath());
+
+            // TODO: Call external file parsing and graph loading method here
+            // Execution halts here as this is a fake implementation stub.
+
+            logger.log(Logger.Type.INFO, "Загрузка из файла не реализована (заглушка).");
+        }
+    }
+
+    private void doSaveFile() {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Сохранение графа в файл");
+        fileChooser.getExtensionFilters().addAll(
+                new FileChooser.ExtensionFilter("Graph Files", "*.csv"),
+                new FileChooser.ExtensionFilter("All Files", "*.*"));
+
+        // Get the main window to attach the dialog to it
+        javafx.stage.Window window = canvas1.getScene() != null ? canvas1.getScene().getWindow() : null;
+        File file = fileChooser.showSaveDialog(window);
+
+        if (file != null) {
+            logger.log(Logger.Type.ACTION, "Выбран файл для сохранения: " + file.getAbsolutePath());
+
+            // TODO: Call external file writing and graph saving method here
+            // Execution halts here as this is a fake implementation stub.
+
+            logger.log(Logger.Type.INFO, "Сохранение в файл не реализовано (заглушка).");
+        }
+    }
+
     private void updateButtonsState() {
         boolean isFinished = (state == State.ALGORITHM_FINISHED);
         boolean isRunning = (state != State.WAITING_INPUT);
@@ -435,8 +481,8 @@ public class Controller {
         controlPanel.setEnabled(ControlPanel.ButtonId.RESET, true);
         controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, !isRunning);
         controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, !isRunning);
-        controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, false);
-        controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, false);
+        controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, !isRunning);
+        controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, true);
         controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, !isFinished);
         controlPanel.setEnabled(ControlPanel.ButtonId.STEP_BACK, false);
 
