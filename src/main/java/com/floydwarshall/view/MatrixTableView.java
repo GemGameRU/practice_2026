@@ -194,6 +194,12 @@ public class MatrixTableView {
         isRebuilding = false; // Разблокировка
     }
 
+    public void setEditingLocked(boolean locked) {
+        if (this.editable) {
+            table.setEditable(!locked);
+        }
+    }
+
     private TableCell<Row, String> makeEditableCell(int j) {
         TextFieldTableCell<Row, String> cell = new TextFieldTableCell<>(IDENTITY) {
             @Override

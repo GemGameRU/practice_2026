@@ -427,17 +427,20 @@ public class Controller {
 
     private void updateButtonsState() {
         boolean isFinished = (state == State.ALGORITHM_FINISHED);
+        boolean isRunning = (state != State.WAITING_INPUT);
+
         controlPanel.setEnabled(ControlPanel.ButtonId.STEP_FORWARD, !isFinished);
         controlPanel.setEnabled(ControlPanel.ButtonId.STEP_N, !isFinished);
         controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, !isFinished);
         controlPanel.setEnabled(ControlPanel.ButtonId.RESET, true);
-        controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, true);
-        controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, true);
-
+        controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, !isRunning);
+        controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, !isRunning);
         controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, false);
         controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, false);
         controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, !isFinished);
         controlPanel.setEnabled(ControlPanel.ButtonId.STEP_BACK, false);
+
+        table1.setEditingLocked(isRunning);
 
         if (isAutoPlaying) {
             controlPanel.setStartPauseLabel("Пауза");
