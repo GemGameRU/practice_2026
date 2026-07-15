@@ -101,6 +101,8 @@ public class App extends Application {
         root.setCenter(center);
         Scene scene = new Scene(root, WINDOW_W, WINDOW_H);
 
+        scene.getStylesheets().add(getClass().getResource("/smartgraph.css").toExternalForm());
+
         scene.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
             if (e.getCode() == KeyCode.ESCAPE) {
                 canvas1.clearSelection();

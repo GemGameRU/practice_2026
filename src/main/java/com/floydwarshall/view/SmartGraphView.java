@@ -14,6 +14,7 @@ import javafx.scene.control.Label;
 import javafx.scene.input.MouseButton;
 import javafx.geometry.Pos;
 
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -51,7 +52,16 @@ public class SmartGraphView extends BorderPane {
         this.smartGraph = new DigraphEdgeList<>();
         SmartCircularSortedPlacementStrategy placementStrategy = new SmartCircularSortedPlacementStrategy();
         ForceDirectedLayoutStrategy<Integer> automaticPlacement = new ForceDirectedSpringGravityLayoutStrategy<>();
-        this.graphView = new SmartGraphPanel<>(smartGraph, placementStrategy, automaticPlacement);
+        SmartGraphProperties sgp = new SmartGraphProperties(
+                getClass().getResourceAsStream("/smartgraph.properties"));
+
+        java.net.URI css = null;
+        try {
+            css = getClass().getResource("/smartgraph.css").toURI();
+        } catch (URISyntaxException e) {
+
+        }
+        this.graphView = new SmartGraphPanel<>(smartGraph, sgp, placementStrategy, css, automaticPlacement);
         this.graphView.setAutomaticLayout(true);
 
         this.setPrefSize(width, height);
