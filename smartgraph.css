@@ -7,6 +7,7 @@
 
 .edge {
     -fx-stroke: #607d8b;
+    -fx-fill: transparent;
     -fx-stroke-width: 1.5;
 }
 
@@ -35,6 +36,7 @@
 
 .edge-highlight {
     -fx-stroke: #4fc3f7;
+    -fx-fill: transparent;
     -fx-stroke-width: 3;
 }
 
@@ -47,6 +49,6 @@
 
 .edge-selected {
     -fx-stroke: #fff176;
+    -fx-fill: transparent;
     -fx-stroke-width: 4;
 }
-

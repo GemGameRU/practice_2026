@@ -248,6 +248,24 @@ public class MatrixTableView {
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> updateSelection.run());
     }
 
+    public void selectCell(int i, int j) {
+        if (i >= 0 && i < rows.size() && j >= 0 && j + 1 < table.getColumns().size()) {
+            TableColumn<Row, ?> col = table.getColumns().get(j + 1);
+            table.getSelectionModel().select(i, col);
+            table.getFocusModel().focus(i, col);
+            table.scrollTo(i); // Прокрутка к строке, если она не видна
+        }
+    }
+
+    public void selectRowHeader(int i) {
+        if (i >= 0 && i < rows.size() && !table.getColumns().isEmpty()) {
+            TableColumn<Row, ?> col = table.getColumns().get(0);
+            table.getSelectionModel().select(i, col);
+            table.getFocusModel().focus(i, col);
+            table.scrollTo(i);
+        }
+    }
+
     public TableView<Row> getNode() {
         return table;
     }

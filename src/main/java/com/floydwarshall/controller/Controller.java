@@ -79,10 +79,11 @@ public class Controller {
             SmartGraphView otherCanvas, MatrixTableView otherTable) {
         canvas.setSelectionListener((type, a, b) -> {
             otherTable.clearSelectionSync();
+
             if (type == SmartGraphView.SelectionType.VERTEX) {
-                // Подсветка вершины в таблице
+                table.selectRowHeader(a);
             } else if (type == SmartGraphView.SelectionType.EDGE) {
-                // Подсветка ребра в таблице
+                table.selectCell(a, b);
             } else {
                 table.clearSelectionSync();
             }
@@ -121,7 +122,10 @@ public class Controller {
             case ADD_VERTEX -> doAddVertex();
             case REMOVE_VERTEX -> doRemoveVertex();
             case STEP_BACK -> logger.log(Logger.Type.INFO, "Кнопка «Шаг назад» будет доступна в Версии 2");
-            case LOAD_FILE, SAVE -> logger.log(Logger.Type.INFO, "Ввод/Сохранение файлов будет реализовано далее");
+            // Работа с файлами сознательно исключена из Версии 1 (по заданию).
+            // Кнопки «Ввод из файла» и «Сохранение» остаются неактивными.
+            case LOAD_FILE, SAVE -> {
+                /* не реализовано в данной версии */ }
         }
     }
 
@@ -207,15 +211,66 @@ public class Controller {
 
     private void doStepN() {
         int n = controlPanel.getStepN();
-        for (int count = 0; count < n; count++) {
-            if (state == State.ALGORITHM_FINISHED)
-                break;
-
-            if (executor != null && executor.isFinished())
-                break;
-
-            doStepForward();
+        if (n <= 0) {
+            logger.log(Logger.Type.ERROR, "N должно быть положительным числом");
+            return;
         }
+
+        // Если алгоритм ещё не запущен — инициализируем его (один шаг инициализации).
+        if (state == State.WAITING_INPUT) {
+            Integer[][] source = table1.toMatrix();
+            inputGraph.replaceMatrix(source);
+            resultGraph.replaceMatrix(source);
+            executor = new FloydWarshallExecutor(source);
+            currentStep = 0;
+            totalSteps = FloydWarshall.totalSteps(inputGraph.size());
+            state = State.ALGORITHM_PAUSED;
+            logger.log(Logger.Type.STATE, "Алгоритм запущен");
+        }
+
+        if (state == State.ALGORITHM_FINISHED) {
+            return;
+        }
+
+        // Выполняем N шагов БЕЗ промежуточных обновлений UI —
+        // согласно спецификации Версии 1: «результат отображается только
+        // после завершения всех N шагов».
+        FloydWarshallExecutor.StepResult lastRes = null;
+        int performed = 0;
+        for (int count = 0; count < n; count++) {
+            if (executor.isFinished()) {
+                break;
+            }
+            currentStep++;
+            lastRes = executor.stepForward();
+            performed++;
+        }
+
+        if (lastRes == null) {
+            // Ничего не было выполнено (алгоритм уже завершён до цикла).
+            return;
+        }
+
+        // Обновляем UI один раз — финальным состоянием.
+        resultGraph.replaceMatrix(lastRes.dist());
+        table2.rebuild(resultGraph);
+        table2.setAlgorithmHighlight(lastRes.i(), lastRes.j(), lastRes.k());
+        canvas2.setGraph(resultGraph);
+        canvas2.setAlgorithmHighlight(lastRes.i(), lastRes.j(), lastRes.k());
+
+        updateStepDescription(lastRes);
+        logger.log(Logger.Type.STATE, String.format(
+                "Шаг N: выполнено %d шаг(ов), текущий шаг %d из %d (k=%d, i=%d, j=%d, D[%d][%d] %s)",
+                performed, currentStep, totalSteps, lastRes.k(), lastRes.i(), lastRes.j(),
+                lastRes.i(), lastRes.j(),
+                lastRes.wasUpdate() ? "обновлено " + lastRes.oldValue() + " → " + lastRes.altValue()
+                        : "не обновлено"));
+
+        if (executor.isFinished()) {
+            state = State.ALGORITHM_FINISHED;
+            logger.log(Logger.Type.STATE, "Алгоритм завершён (всего шагов: " + totalSteps + ")");
+        }
+        updateButtonsState();
     }
 
     private void doStartPause() {
@@ -381,8 +436,9 @@ public class Controller {
         controlPanel.setEnabled(ControlPanel.ButtonId.RESET, true);
         controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, true);
         controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, true);
-        controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, true);
-        controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, true);
+        // Работа с файлами исключена из Версии 1 — кнопки неактивны.
+        controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, false);
+        controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, false);
         controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, !isFinished);
         controlPanel.setEnabled(ControlPanel.ButtonId.STEP_BACK, false); // Версия 2
 
@@ -391,6 +447,16 @@ public class Controller {
         } else {
             controlPanel.setStartPauseLabel("Пуск");
         }
+        // Обновляем подпись кнопки скорости, чтобы пользователь видел текущий
+        // множитель.
+        controlPanel.setSpeedLabel("Скорость " + formatSpeed(currentSpeed) + "x");
+    }
+
+    private static String formatSpeed(double s) {
+        if (s == (int) s) {
+            return String.valueOf((int) s);
+        }
+        return String.valueOf(s);
     }
 
     private void rebuildAll() {

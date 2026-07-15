@@ -4,9 +4,14 @@ import com.brunomnsilva.smartgraph.containers.ContentZoomScrollPane;
 import com.brunomnsilva.smartgraph.graphview.*;
 import com.brunomnsilva.smartgraph.graph.*;
 import com.floydwarshall.model.Graph;
+
+import static com.brunomnsilva.smartgraph.graphview.UtilitiesJavaFX.pick;
+
 import javafx.application.Platform;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.Node;
 import javafx.scene.control.Label;
+import javafx.scene.input.MouseButton;
 import javafx.geometry.Pos;
 
 import java.util.ArrayList;
@@ -44,8 +49,9 @@ public class SmartGraphView extends BorderPane {
     public SmartGraphView(double width, double height, String title, boolean editableSource) {
         this.editableSource = editableSource;
         this.smartGraph = new DigraphEdgeList<>();
+        SmartCircularSortedPlacementStrategy placementStrategy = new SmartCircularSortedPlacementStrategy();
         ForceDirectedLayoutStrategy<Integer> automaticPlacement = new ForceDirectedSpringGravityLayoutStrategy<>();
-        this.graphView = new SmartGraphPanel<>(smartGraph, automaticPlacement);
+        this.graphView = new SmartGraphPanel<>(smartGraph, placementStrategy, automaticPlacement);
         this.graphView.setAutomaticLayout(true);
 
         this.setPrefSize(width, height);
@@ -58,34 +64,46 @@ public class SmartGraphView extends BorderPane {
     }
 
     private void setupInteractions() {
-        graphView.setVertexDoubleClickAction(v -> {
-            int vertex = v.getUnderlyingVertex().element();
-            selectedVertex = vertex;
-            selectedEdge = null;
-            applyStylesAsync();
-            if (listener != null)
-                listener.onSelection(SelectionType.VERTEX, vertex, -1);
-        });
+        this.graphView.setOnMouseClicked(event -> {
+            // Only handle primary button single clicks
+            if (event.getButton() != MouseButton.PRIMARY || event.getClickCount() != 1) {
+                return;
+            }
 
-        graphView.setEdgeDoubleClickAction(e -> {
-            Edge<EdgeWeight, Integer> edge = e.getUnderlyingEdge();
-            Vertex<Integer>[] verts = edge.vertices();
-            Integer u = verts[0].element();
-            Integer v = verts[1].element();
-            selectedVertex = -1;
-            selectedEdge = new int[]{u, v};
-            applyStylesAsync();
-            if (listener != null)
-                listener.onSelection(SelectionType.EDGE, u, v);
-        });
+            Node target = (Node) pick(this, event.getSceneX(), event.getSceneY());
 
-        graphView.setOnMouseClicked(ev -> {
-            if (ev.getClickCount() == 1 && ev.getTarget() == graphView) {
+            if (target instanceof SmartGraphVertex) {
+                // Vertex clicked
+                @SuppressWarnings("unchecked")
+                SmartGraphVertex<Integer> v = (SmartGraphVertex<Integer>) target;
+                selectedVertex = v.getUnderlyingVertex().element();
+                selectedEdge = null;
+                applyStylesAsync();
+                if (listener != null) {
+                    listener.onSelection(SelectionType.VERTEX, selectedVertex, -1);
+                }
+            } else if (target instanceof SmartGraphEdge) {
+                // Edge clicked
+                @SuppressWarnings("unchecked")
+                SmartGraphEdge<EdgeWeight, Integer> e = (SmartGraphEdge<EdgeWeight, Integer>) target;
+                Edge<EdgeWeight, Integer> edge = e.getUnderlyingEdge();
+                Vertex<Integer>[] verts = edge.vertices();
+                int u = verts[0].element();
+                int v = verts[1].element();
+                selectedVertex = -1;
+                selectedEdge = new int[] { u, v };
+                applyStylesAsync();
+                if (listener != null) {
+                    listener.onSelection(SelectionType.EDGE, u, v);
+                }
+            } else {
+                // Background clicked
                 selectedVertex = -1;
                 selectedEdge = null;
                 applyStylesAsync();
-                if (listener != null)
+                if (listener != null) {
                     listener.onSelection(SelectionType.NONE, -1, -1);
+                }
             }
         });
     }
@@ -99,8 +117,10 @@ public class SmartGraphView extends BorderPane {
     }
 
     /**
-     * Incremental sync method. Instead of wiping the graph clean (which resets layout coordinates to 0,0),
-     * it diffs the current UI graph against the new matrix and only adds/removes what changed.
+     * Incremental sync method. Instead of wiping the graph clean (which resets
+     * layout coordinates to 0,0),
+     * it diffs the current UI graph against the new matrix and only adds/removes
+     * what changed.
      */
     public void setGraph(Graph matrixGraph) {
         int n = matrixGraph.size();
@@ -194,7 +214,7 @@ public class SmartGraphView extends BorderPane {
 
     public void selectEdge(int from, int to) {
         this.selectedVertex = -1;
-        this.selectedEdge = new int[]{from, to};
+        this.selectedEdge = new int[] { from, to };
         applyStylesAsync();
     }
 

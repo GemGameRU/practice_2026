@@ -38,7 +38,7 @@ public class ControlPanel {
         Button reset = makeButton("Сброс");
         Button loadFile = makeButton("Ввод из файла");
         Button save = makeButton("Сохранение");
-        Button speed = makeButton("Скорость kx");
+        Button speed = makeButton("Скорость 1x");
         Button removeVertex = makeButton("Удалить вершину");
 
         buttons.put(ButtonId.STEP_BACK, stepBack);
@@ -122,6 +122,10 @@ public class ControlPanel {
 
     public void setStartPauseLabel(String text) {
         buttons.get(ButtonId.START_PAUSE).setText(text);
+    }
+
+    public void setSpeedLabel(String text) {
+        buttons.get(ButtonId.SPEED).setText(text);
     }
 
     public int getStepN() {
