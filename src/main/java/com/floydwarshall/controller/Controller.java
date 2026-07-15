@@ -39,16 +39,17 @@ public class Controller {
     private boolean isAutoPlaying = false;
     private Timeline autoPlayTimeline;
     private double currentSpeed = 1.0;
+    private File lastLoadedFile = null;
 
     public interface StepDescriptionUpdater {
         void update(String text);
     }
 
     public Controller(Graph inputGraph,
-            SmartGraphView canvas1, SmartGraphView canvas2,
-            MatrixTableView table1, MatrixTableView table2,
-            ControlPanel controlPanel,
-            Logger logger) {
+                      SmartGraphView canvas1, SmartGraphView canvas2,
+                      MatrixTableView table1, MatrixTableView table2,
+                      ControlPanel controlPanel,
+                      Logger logger) {
         this.inputGraph = inputGraph;
         this.resultGraph = new Graph(inputGraph);
         this.canvas1 = canvas1;
@@ -72,7 +73,7 @@ public class Controller {
 
     private void wire() {
         controlPanel.setListener(this::onButton);
-        controlPanel.setSpeedListener(this::onSpeedChanged); // Подключаем слушатель скорости
+        controlPanel.setSpeedListener(this::onSpeedChanged);
 
         table1.setEditListener((i, j, newValue) -> applyCellEdit(i, j, newValue));
 
@@ -81,13 +82,13 @@ public class Controller {
     }
 
     private void wireSelectionSync(SmartGraphView canvas, MatrixTableView table,
-            SmartGraphView otherCanvas, MatrixTableView otherTable) {
+                                   SmartGraphView otherCanvas, MatrixTableView otherTable) {
         canvas.setSelectionListener((type, a, b) -> {
             otherTable.clearSelectionSync();
             if (type == SmartGraphView.SelectionType.VERTEX) {
-                table.selectVertex(a); // Выделяем строку и столбец
+                table.selectVertex(a);
             } else if (type == SmartGraphView.SelectionType.EDGE) {
-                table.selectEdge(a, b); // Выделяем ячейку
+                table.selectEdge(a, b);
             } else {
                 table.clearSelectionSync();
             }
@@ -128,8 +129,8 @@ public class Controller {
             case RESET -> doReset();
             case ADD_VERTEX -> doAddVertex();
             case REMOVE_VERTEX -> doRemoveVertex();
-            case LOAD_FILE -> doLoadFile(); // <--- NEW
-            case SAVE -> doSaveFile(); // <--- NEW
+            case LOAD_FILE -> doLoadFile();
+            case SAVE -> doSaveFile();
             case STEP_BACK -> logger.log(Logger.Type.INFO, "Кнопка «Шаг назад» будет доступна в Версии 2");
             case SPEED -> {
             }
@@ -433,49 +434,196 @@ public class Controller {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Загрузка графа из файла");
         fileChooser.getExtensionFilters().addAll(
-                new FileChooser.ExtensionFilter("Graph Files", "*.csv"),
+                new FileChooser.ExtensionFilter("Graph Files", "*.csv", "*.txt"),
                 new FileChooser.ExtensionFilter("All Files", "*.*"));
 
-        // Get the main window to attach the dialog to it
+        // Открываем диалог загрузки в той же папке, где был последний файл
+        if (lastLoadedFile != null && lastLoadedFile.getParentFile() != null) {
+            fileChooser.setInitialDirectory(lastLoadedFile.getParentFile());
+        }
+
         javafx.stage.Window window = canvas1.getScene() != null ? canvas1.getScene().getWindow() : null;
         File file = fileChooser.showOpenDialog(window);
 
         if (file != null) {
-            logger.log(Logger.Type.ACTION, "Выбран файл для загрузки: " + file.getAbsolutePath());
+            try {
+                Integer[][] matrix = loadCsvMatrix(file);
+                inputGraph.replaceMatrix(matrix);
+                resultGraph.replaceMatrix(matrix);
 
-            // TODO: Call external file parsing and graph loading method here
-            // Execution halts here as this is a fake implementation stub.
+                rebuildAll();
+                canvas1.setGraph(inputGraph);
+                canvas2.setGraph(resultGraph);
 
-            logger.log(Logger.Type.INFO, "Загрузка из файла не реализована (заглушка).");
+                resetAlgorithmState();
+
+                // Запоминаем успешный файл
+                lastLoadedFile = file;
+                logger.log(Logger.Type.ACTION, "Загружен файл: " + file.getName() + " (" + inputGraph.size() + " вершин)");
+            } catch (IllegalArgumentException e) {
+                logger.log(Logger.Type.ERROR, "Ошибка валидации файла: " + e.getMessage());
+            } catch (Exception e) {
+                logger.log(Logger.Type.ERROR, "Не удалось загрузить файл: " + e.getMessage());
+            }
         }
+    }
+
+    private Integer[][] loadCsvMatrix(File file) throws Exception {
+        java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(new java.io.FileInputStream(file), java.nio.charset.StandardCharsets.UTF_8));
+        java.util.List<Integer[]> rows = new java.util.ArrayList<>();
+        int lineNumber = 0;
+
+        String line;
+        while ((line = reader.readLine()) != null) {
+            lineNumber++;
+            line = line.trim();
+            if (line.isEmpty()) continue;
+
+            String[] parts = line.split(",");
+            Integer[] row = new Integer[parts.length];
+            for (int j = 0; j < parts.length; j++) {
+                String val = parts[j].trim();
+                if (val.isEmpty() || val.equalsIgnoreCase("inf")) {
+                    row[j] = null;
+                } else {
+                    try {
+                        int weight = Integer.parseInt(val);
+                        // Базовая проверка: веса не могут быть меньше 0
+                        if (weight < 0) {
+                            throw new IllegalArgumentException("Вес ребра не может быть отрицательным (строка " + lineNumber + ", столбец " + (j + 1) + ")");
+                        }
+                        row[j] = weight;
+                    } catch (NumberFormatException e) {
+                        throw new IllegalArgumentException("Некорректное значение ячейки (строка " + lineNumber + ", столбец " + (j + 1) + "): " + val);
+                    }
+                }
+            }
+            rows.add(row);
+        }
+        reader.close();
+
+        int n = rows.size();
+        if (n < 2) {
+            throw new IllegalArgumentException("Матрица должна содержать минимум 2 вершины");
+        }
+        if (n > 20) {
+            throw new IllegalArgumentException("Матрица не может содержать больше 20 вершин");
+        }
+
+        for (int i = 0; i < n; i++) {
+            if (rows.get(i).length != n) {
+                throw new IllegalArgumentException("Матрица должна быть квадратной (ошибка в строке " + (i + 1) + ": ожидалось " + n + " столбцов, найдено " + rows.get(i).length + ")");
+            }
+
+            for (int j = 0; j < n; j++) {
+                if (i == j) {
+
+                    if (rows.get(i)[j] != null && rows.get(i)[j] != 0) {
+                        logger.log(Logger.Type.INFO, "Диагональный элемент [" + i + "][" + j + "] автоматически изменён на 0 (в файле было: " + String.valueOf(rows.get(i)[j]) + ")");
+                    }
+                    rows.get(i)[j] = 0;
+                } else {
+
+                    if (rows.get(i)[j] != null && rows.get(i)[j] <= 0) {
+                        throw new IllegalArgumentException("Вес ребра вне диагонали должен быть строго положительным (строка " + (i + 1) + ", столбец " + (j + 1) + ", значение: " + rows.get(i)[j] + ")");
+                    }
+                }
+            }
+        }
+
+        return rows.toArray(new Integer[0][]);
     }
 
     private void doSaveFile() {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Сохранение графа в файл");
         fileChooser.getExtensionFilters().addAll(
-                new FileChooser.ExtensionFilter("Graph Files", "*.csv"),
+                new FileChooser.ExtensionFilter("Graph Files", "*.csv", "*.txt"),
                 new FileChooser.ExtensionFilter("All Files", "*.*"));
 
-        // Get the main window to attach the dialog to it
+        // Автоподстановка директории и имени из вводимого файла
+        if (lastLoadedFile != null) {
+            File parentDir = lastLoadedFile.getParentFile();
+            if (parentDir != null && parentDir.exists() && parentDir.isDirectory()) {
+                fileChooser.setInitialDirectory(parentDir);
+            }
+
+            // Извлекаем имя без расширения, чтобы пользователь мог просто нажать "Сохранить"
+            String originalName = lastLoadedFile.getName();
+            int dotIndex = originalName.lastIndexOf('.');
+            String baseName = (dotIndex > 0) ? originalName.substring(0, dotIndex) : originalName;
+
+            fileChooser.setInitialFileName(baseName);
+        }
+
         javafx.stage.Window window = canvas1.getScene() != null ? canvas1.getScene().getWindow() : null;
         File file = fileChooser.showSaveDialog(window);
 
         if (file != null) {
-            String csvPath = file.getAbsolutePath();
-            String basePath = csvPath.toLowerCase().endsWith(".csv")
-                    ? csvPath.substring(0, csvPath.length() - 4)
-                    : csvPath;
-            File logFile = new File(basePath + ".txt");
+            try {
+                String filePath = file.getAbsolutePath();
+                String baseName;
+                String ext = "";
 
-            logger.log(Logger.Type.ACTION, "Выбран файл для сохранения матрицы: " + file.getAbsolutePath());
-            logger.log(Logger.Type.ACTION, "Файл для сохранения логов: " + logFile.getAbsolutePath());
+                // Безопасное извлечение базового имени и расширения
+                int dotIndex = filePath.lastIndexOf('.');
+                if (dotIndex > 0 && dotIndex < filePath.length() - 1) {
+                    baseName = filePath.substring(0, dotIndex);
+                    ext = filePath.substring(dotIndex).toLowerCase();
+                } else {
+                    baseName = filePath;
+                }
 
-            // TODO: Call external file writing and graph saving method here
-            // Execution halts here as this is a fake implementation stub.
+                String matrixPath;
+                String logPath;
 
-            logger.log(Logger.Type.INFO, "Сохранение в файл не реализовано (заглушка).");
+                if (".csv".equals(ext)) {
+                    matrixPath = baseName + ".csv";
+                    logPath = baseName + ".txt";
+                } else if (".txt".equals(ext)) {
+                    matrixPath = baseName + ".txt";
+                    logPath = baseName + "_log.txt";
+                } else {
+                    matrixPath = baseName + ".csv";
+                    logPath = baseName + ".txt";
+                }
+
+                Integer[][] matrixToSave = (state == State.WAITING_INPUT) ? table1.toMatrix() : resultGraph.snapshot();
+
+                saveMatrix(new File(matrixPath), matrixToSave);
+                saveLogFile(new File(logPath));
+
+                logger.log(Logger.Type.ACTION, "Сохранено: " + new File(matrixPath).getName() + " и " + new File(logPath).getName());
+            } catch (Exception e) {
+                logger.log(Logger.Type.ERROR, "Не удалось сохранить файл: " + e.getMessage());
+            }
         }
+    }
+
+    private void saveMatrix(File file, Integer[][] matrix) throws Exception {
+        java.io.PrintWriter writer = new java.io.PrintWriter(
+                new java.io.OutputStreamWriter(new java.io.FileOutputStream(file), java.nio.charset.StandardCharsets.UTF_8));
+
+        for (Integer[] row : matrix) {
+            StringBuilder sb = new StringBuilder();
+            for (int j = 0; j < row.length; j++) {
+                if (j > 0) sb.append(",");
+                sb.append(row[j] == null ? "inf" : String.valueOf(row[j]));
+            }
+            writer.println(sb.toString());
+        }
+        writer.close();
+    }
+
+    private void saveLogFile(File file) throws Exception {
+        java.io.PrintWriter writer = new java.io.PrintWriter(
+                new java.io.OutputStreamWriter(new java.io.FileOutputStream(file), java.nio.charset.StandardCharsets.UTF_8));
+
+        for (String entry : logger.getEntries()) {
+            writer.println(entry);
+        }
+        writer.close();
     }
 
     private void updateButtonsState() {
