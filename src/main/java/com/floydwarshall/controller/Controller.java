@@ -462,7 +462,14 @@ public class Controller {
         File file = fileChooser.showSaveDialog(window);
 
         if (file != null) {
-            logger.log(Logger.Type.ACTION, "Выбран файл для сохранения: " + file.getAbsolutePath());
+            String csvPath = file.getAbsolutePath();
+            String basePath = csvPath.toLowerCase().endsWith(".csv")
+                    ? csvPath.substring(0, csvPath.length() - 4)
+                    : csvPath;
+            File logFile = new File(basePath + ".txt");
+
+            logger.log(Logger.Type.ACTION, "Выбран файл для сохранения матрицы: " + file.getAbsolutePath());
+            logger.log(Logger.Type.ACTION, "Файл для сохранения логов: " + logFile.getAbsolutePath());
 
             // TODO: Call external file writing and graph saving method here
             // Execution halts here as this is a fake implementation stub.
