@@ -1,0 +1,52 @@
+/* Default Styles */
+.vertex {
+    -fx-fill: #ffffff;
+    -fx-stroke: #37474f;
+    -fx-stroke-width: 2;
+}
+
+.edge {
+    -fx-stroke: #607d8b;
+    -fx-stroke-width: 1.5;
+}
+
+.edge-label {
+    -fx-font: bold 11pt "sans-serif";
+    -fx-fill: #37474f;
+}
+
+.vertex-label {
+    -fx-font: bold 12pt "sans-serif";
+    -fx-fill: #212121;
+}
+
+/* Algorithm Highlights */
+.vertex-k {
+    -fx-fill: #29b6f6;
+    -fx-stroke: #0288d1;
+    -fx-stroke-width: 3;
+}
+
+.vertex-ij {
+    -fx-fill: #4fc3f7;
+    -fx-stroke: #0288d1;
+    -fx-stroke-width: 3;
+}
+
+.edge-highlight {
+    -fx-stroke: #4fc3f7;
+    -fx-stroke-width: 3;
+}
+
+/* User Selection Sync */
+.vertex-selected {
+    -fx-stroke: #fff176;
+    -fx-fill: #d8c835;
+    -fx-stroke-width: 4;
+}
+
+.edge-selected {
+    -fx-stroke: #fff176;
+    -fx-stroke-width: 4;
+}
+

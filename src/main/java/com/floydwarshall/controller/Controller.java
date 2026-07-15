@@ -5,7 +5,7 @@ import com.floydwarshall.model.FloydWarshall;
 import com.floydwarshall.model.FloydWarshallExecutor;
 import com.floydwarshall.model.Graph;
 import com.floydwarshall.view.ControlPanel;
-import com.floydwarshall.view.GraphCanvas;
+import com.floydwarshall.view.SmartGraphView;
 import com.floydwarshall.view.MatrixTableView;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
@@ -19,8 +19,8 @@ public class Controller {
     private State state = State.WAITING_INPUT;
     private final Graph inputGraph;
     private final Graph resultGraph;
-    private final GraphCanvas canvas1;
-    private final GraphCanvas canvas2;
+    private final SmartGraphView canvas1;
+    private final SmartGraphView canvas2;
     private final MatrixTableView table1;
     private final MatrixTableView table2;
     private final ControlPanel controlPanel;
@@ -43,7 +43,7 @@ public class Controller {
     }
 
     public Controller(Graph inputGraph,
-            GraphCanvas canvas1, GraphCanvas canvas2,
+            SmartGraphView canvas1, SmartGraphView canvas2,
             MatrixTableView table1, MatrixTableView table2,
             ControlPanel controlPanel,
             Logger logger) {
@@ -75,13 +75,13 @@ public class Controller {
         wireSelectionSync(canvas2, table2, canvas1, table1);
     }
 
-    private void wireSelectionSync(GraphCanvas canvas, MatrixTableView table,
-            GraphCanvas otherCanvas, MatrixTableView otherTable) {
+    private void wireSelectionSync(SmartGraphView canvas, MatrixTableView table,
+            SmartGraphView otherCanvas, MatrixTableView otherTable) {
         canvas.setSelectionListener((type, a, b) -> {
             otherTable.clearSelectionSync();
-            if (type == GraphCanvas.SelectionType.VERTEX) {
+            if (type == SmartGraphView.SelectionType.VERTEX) {
                 // Подсветка вершины в таблице
-            } else if (type == GraphCanvas.SelectionType.EDGE) {
+            } else if (type == SmartGraphView.SelectionType.EDGE) {
                 // Подсветка ребра в таблице
             } else {
                 table.clearSelectionSync();

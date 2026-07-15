@@ -4,7 +4,7 @@ import com.floydwarshall.controller.Controller;
 import com.floydwarshall.logging.Logger;
 import com.floydwarshall.model.Graph;
 import com.floydwarshall.view.ControlPanel;
-import com.floydwarshall.view.GraphCanvas;
+import com.floydwarshall.view.SmartGraphView;
 import com.floydwarshall.view.LogPanel;
 import com.floydwarshall.view.MatrixTableView;
 import javafx.application.Application;
@@ -28,8 +28,8 @@ public class App extends Application {
 
     private Logger logger;
     private Graph inputGraph;
-    private GraphCanvas canvas1;
-    private GraphCanvas canvas2;
+    private SmartGraphView canvas1;
+    private SmartGraphView canvas2;
     private MatrixTableView table1;
     private MatrixTableView table2;
     private ControlPanel controlPanel;
@@ -48,8 +48,8 @@ public class App extends Application {
         inputGraph.set(2, 3, 1);
         inputGraph.set(3, 1, 1);
 
-        canvas1 = new GraphCanvas(560, 320, "Холст 1 — вводимый граф", true);
-        canvas2 = new GraphCanvas(560, 320, "Холст 2 — граф кратчайших путей", false);
+        canvas1 = new SmartGraphView(560, 320, "Холст 1 — вводимый граф", true);
+        canvas2 = new SmartGraphView(560, 320, "Холст 2 — граф кратчайших путей", false);
         canvas1.setGraph(inputGraph);
         canvas2.setGraph(new Graph(inputGraph));
 
@@ -118,6 +118,9 @@ public class App extends Application {
         primaryStage.setMinWidth(960);
         primaryStage.setMinHeight(680);
         primaryStage.show();
+
+        canvas1.init();
+        canvas2.init();
 
         canvas1.widthProperty().addListener(o -> canvas1.draw());
         canvas1.heightProperty().addListener(o -> canvas1.draw());
