@@ -210,11 +210,7 @@ public class MatrixTableView {
                 applyCellStyle(this, i, j);
             }
         };
-        cell.setOnMousePressed(e -> {
-            int i = cell.getIndex();
-            if (i >= 0 && i < rows.size() && selectionListener != null)
-                selectionListener.onCellSelected(i, j);
-        });
+
         return cell;
     }
 
