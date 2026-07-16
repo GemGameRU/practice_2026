@@ -39,7 +39,7 @@ public class Controller {
     private Timeline autoPlayTimeline;
     private double currentSpeed = 1.0;
     private File lastLoadedFile = null;
-    
+
     private record ExecutorSnapshot(int k, int i, int j, Integer[][] dist) {
     }
 
@@ -533,62 +533,64 @@ public class Controller {
     }
 
     private Integer[][] loadCsvMatrix(File file) throws Exception {
-        java.io.BufferedReader reader = new java.io.BufferedReader(
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(
                 new java.io.InputStreamReader(new java.io.FileInputStream(file),
-                        java.nio.charset.StandardCharsets.UTF_8));
-        java.util.List<Integer[]> rows = new java.util.ArrayList<>();
-        int lineNumber = 0;
-        String line;
-        while ((line = reader.readLine()) != null) {
-            lineNumber++;
-            line = line.trim();
-            if (line.isEmpty())
-                continue;
-            String[] parts = line.split(",");
-            Integer[] row = new Integer[parts.length];
-            for (int j = 0; j < parts.length; j++) {
-                String val = parts[j].trim();
-                if (val.isEmpty() || val.equalsIgnoreCase("inf")) {
-                    row[j] = null;
-                } else {
-                    try {
-                        int weight = Integer.parseInt(val);
-                        if (weight < 0)
-                            throw new IllegalArgumentException("Вес ребра не может быть отрицательным (строка "
-                                    + lineNumber + ", столбец " + (j + 1) + ")");
-                        row[j] = weight;
-                    } catch (NumberFormatException e) {
-                        throw new IllegalArgumentException("Некорректное значение ячейки (строка " + lineNumber
-                                + ", столбец " + (j + 1) + "): " + val);
+                        java.nio.charset.StandardCharsets.UTF_8))) {
+            java.util.List<Integer[]> rows = new java.util.ArrayList<>();
+            int lineNumber = 0;
+            String line;
+            while ((line = reader.readLine()) != null) {
+                lineNumber++;
+                line = line.trim();
+                if (line.isEmpty())
+                    continue;
+                String[] parts = line.split(",");
+                Integer[] row = new Integer[parts.length];
+                for (int j = 0; j < parts.length; j++) {
+                    String val = parts[j].trim();
+                    if (val.isEmpty() || val.equalsIgnoreCase("inf")) {
+                        row[j] = null;
+                    } else {
+                        try {
+                            int weight = Integer.parseInt(val);
+                            if (weight < 0)
+                                throw new IllegalArgumentException("Вес ребра не может быть отрицательным (строка "
+                                        + lineNumber + ", столбец " + (j + 1) + ")");
+                            row[j] = weight;
+                        } catch (NumberFormatException e) {
+                            throw new IllegalArgumentException("Некорректное значение ячейки (строка " + lineNumber
+                                    + ", столбец " + (j + 1) + "): " + val);
+                        }
+                    }
+                }
+                rows.add(row);
+            }
+            reader.close();
+            int n = rows.size();
+            if (n < 2)
+                throw new IllegalArgumentException("Матрица должна содержать минимум 2 вершины");
+            if (n > 20)
+                throw new IllegalArgumentException("Матрица не может содержать больше 20 вершин");
+            for (int i = 0; i < n; i++) {
+                if (rows.get(i).length != n)
+                    throw new IllegalArgumentException(
+                            "Матрица должна быть квадратной (ошибка в строке " + (i + 1) + ")");
+                for (int j = 0; j < n; j++) {
+                    if (i == j) {
+                        if (rows.get(i)[j] != null && rows.get(i)[j] != 0)
+                            logger.log(Logger.Type.INFO,
+                                    "Диагональный элемент [" + i + "][" + j + "] автоматически изменён на 0");
+                        rows.get(i)[j] = 0;
+                    } else {
+                        if (rows.get(i)[j] != null && rows.get(i)[j] <= 0)
+                            throw new IllegalArgumentException(
+                                    "Вес ребра вне диагонали должен быть строго положительным (строка " + (i + 1)
+                                            + ", столбец " + (j + 1) + ")");
                     }
                 }
             }
-            rows.add(row);
+            return rows.toArray(new Integer[0][]);
         }
-        reader.close();
-        int n = rows.size();
-        if (n < 2)
-            throw new IllegalArgumentException("Матрица должна содержать минимум 2 вершины");
-        if (n > 20)
-            throw new IllegalArgumentException("Матрица не может содержать больше 20 вершин");
-        for (int i = 0; i < n; i++) {
-            if (rows.get(i).length != n)
-                throw new IllegalArgumentException("Матрица должна быть квадратной (ошибка в строке " + (i + 1) + ")");
-            for (int j = 0; j < n; j++) {
-                if (i == j) {
-                    if (rows.get(i)[j] != null && rows.get(i)[j] != 0)
-                        logger.log(Logger.Type.INFO,
-                                "Диагональный элемент [" + i + "][" + j + "] автоматически изменён на 0");
-                    rows.get(i)[j] = 0;
-                } else {
-                    if (rows.get(i)[j] != null && rows.get(i)[j] <= 0)
-                        throw new IllegalArgumentException(
-                                "Вес ребра вне диагонали должен быть строго положительным (строка " + (i + 1)
-                                        + ", столбец " + (j + 1) + ")");
-                }
-            }
-        }
-        return rows.toArray(new Integer[0][]);
     }
 
     private void doSaveFile() {
