@@ -112,6 +112,8 @@ public class App extends Application {
                 table2.clearSelectionSync();
             } else if (e.getCode() == KeyCode.RIGHT) {
                 controller.stepForward();
+            } else if (e.getCode() == KeyCode.LEFT) {
+                controller.stepBackward();
             }
         });
 

@@ -4,6 +4,7 @@ import com.floydwarshall.logging.Logger;
 import com.floydwarshall.model.FloydWarshall;
 import com.floydwarshall.model.FloydWarshallExecutor;
 import com.floydwarshall.model.Graph;
+import com.floydwarshall.model.MatrixOps;
 import com.floydwarshall.view.ControlPanel;
 import com.floydwarshall.view.SmartGraphView;
 import com.floydwarshall.view.MatrixTableView;
@@ -11,8 +12,9 @@ import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.util.Duration;
 import javafx.stage.FileChooser;
-
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Controller {
     private enum State {
@@ -29,15 +31,20 @@ public class Controller {
     private final ControlPanel controlPanel;
     private final Logger logger;
     private StepDescriptionUpdater stepDescriptionUpdater;
-
     private FloydWarshallExecutor executor;
+
     private int currentStep = 0;
     private int totalSteps = 0;
-
     private boolean isAutoPlaying = false;
     private Timeline autoPlayTimeline;
     private double currentSpeed = 1.0;
     private File lastLoadedFile = null;
+    
+    private record ExecutorSnapshot(int k, int i, int j, Integer[][] dist) {
+    }
+
+    private List<ExecutorSnapshot> snapshots = new ArrayList<>();
+    private List<FloydWarshallExecutor.StepResult> results = new ArrayList<>();
 
     public interface StepDescriptionUpdater {
         void update(String text);
@@ -68,10 +75,13 @@ public class Controller {
         doStepForward();
     }
 
+    public void stepBackward() {
+        doStepBackward();
+    }
+
     private void wire() {
         controlPanel.setListener(this::onButton);
         controlPanel.setSpeedListener(this::onSpeedChanged);
-
         controlPanel.setFixVerticesListener(fixed -> {
             canvas1.setVerticesFixed(fixed);
             canvas2.setVerticesFixed(fixed);
@@ -124,6 +134,7 @@ public class Controller {
     private void onButton(ControlPanel.ButtonId id) {
         switch (id) {
             case STEP_FORWARD -> doStepForward();
+            case STEP_BACK -> doStepBackward();
             case STEP_N -> doStepN();
             case START_PAUSE -> doStartPause();
             case RESET -> doReset();
@@ -131,7 +142,6 @@ public class Controller {
             case REMOVE_VERTEX -> doRemoveVertex();
             case LOAD_FILE -> doLoadFile();
             case SAVE -> doSaveFile();
-            case STEP_BACK -> logger.log(Logger.Type.INFO, "Кнопка «Шаг назад» будет доступна в Версии 2");
             case SPEED -> {
             }
         }
@@ -151,7 +161,6 @@ public class Controller {
         }
     }
 
-    // --- Инициализация алгоритма (общая для stepForward / stepN) ---
     private void ensureAlgorithmStarted() {
         if (state == State.WAITING_INPUT) {
             Integer[][] source = table1.toMatrix();
@@ -160,36 +169,85 @@ public class Controller {
             executor = new FloydWarshallExecutor(source);
             currentStep = 0;
             totalSteps = FloydWarshall.totalSteps(inputGraph.size());
+
+            snapshots.clear();
+            results.clear();
+            snapshots.add(new ExecutorSnapshot(0, 0, 0, MatrixOps.deepCopy(source)));
+
             state = State.ALGORITHM_PAUSED;
             logger.log(Logger.Type.STATE, "Алгоритм запущен");
         }
     }
 
-    // --- Один шаг вперёд ---
     private void doStepForward() {
-        if (state == State.ALGORITHM_FINISHED)
+        if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps)
             return;
         ensureAlgorithmStarted();
 
-        if (executor.isFinished()) {
-            state = State.ALGORITHM_FINISHED;
-            updateButtonsState();
-            stepDescriptionUpdater.update("Алгоритм завершён");
-            logger.log(Logger.Type.STATE, "Алгоритм завершён (всего шагов: " + totalSteps + ")");
-            return;
+        if (currentStep < results.size()) {
+            // Идем вперед по уже пройденной истории
+            currentStep++;
+            FloydWarshallExecutor.StepResult res = results.get(currentStep - 1);
+            applyStepResult(res);
+
+            ExecutorSnapshot nextSnapshot = snapshots.get(currentStep);
+            executor.setState(nextSnapshot.k(), nextSnapshot.i(), nextSnapshot.j(), nextSnapshot.dist());
+
+            logger.log(Logger.Type.STATE, String.format("Шаг %d (из истории): k=%d, i=%d, j=%d",
+                    currentStep, res.k(), res.i(), res.j()));
+        } else {
+            // Новый шаг
+            ExecutorSnapshot before = snapshots.get(currentStep);
+            executor.setState(before.k(), before.i(), before.j(), before.dist());
+
+            FloydWarshallExecutor.StepResult res = executor.stepForward();
+            results.add(res);
+            snapshots.add(new ExecutorSnapshot(executor.getCurrentK(), executor.getCurrentI(), executor.getCurrentJ(),
+                    executor.getDist()));
+
+            currentStep++;
+            applyStepResult(res);
+
+            logger.log(Logger.Type.STATE, String.format("Шаг %d: k=%d, i=%d, j=%d, D[%d][%d] %s",
+                    currentStep, res.k(), res.i(), res.j(), res.i(), res.j(),
+                    res.wasUpdate() ? "обновлено " + res.oldValue() + " → " + res.altValue() : "не обновлено"));
         }
 
-        currentStep++;
-        FloydWarshallExecutor.StepResult res = executor.stepForward();
-        applyStepResult(res);
-
-        logger.log(Logger.Type.STATE, String.format("Шаг %d: k=%d, i=%d, j=%d, D[%d][%d] %s",
-                currentStep, res.k(), res.i(), res.j(), res.i(), res.j(),
-                res.wasUpdate() ? "обновлено " + res.oldValue() + " → " + res.altValue() : "не обновлено"));
-
-        if (executor.isFinished()) {
+        if (executor.isFinished() && currentStep >= totalSteps) {
             state = State.ALGORITHM_FINISHED;
             logger.log(Logger.Type.STATE, "Алгоритм завершён (всего шагов: " + totalSteps + ")");
+        } else {
+            state = State.ALGORITHM_PAUSED;
+        }
+        updateButtonsState();
+    }
+
+    private void doStepBackward() {
+        if (state == State.WAITING_INPUT || currentStep == 0)
+            return;
+
+        if (state == State.ALGORITHM_FINISHED) {
+            state = State.ALGORITHM_PAUSED;
+        }
+
+        currentStep--;
+        if (currentStep == 0) {
+            Integer[][] source = snapshots.get(0).dist();
+            resultGraph.replaceMatrix(source);
+            executor.setState(0, 0, 0, source);
+            table2.rebuild(resultGraph);
+            canvas2.setGraph(resultGraph);
+            canvas2.clearAlgorithmHighlight();
+            table2.clearAlgorithmHighlight();
+            stepDescriptionUpdater.update("Алгоритм не запущен");
+            logger.log(Logger.Type.STATE, "Шаг назад: возврат к началу");
+        } else {
+            FloydWarshallExecutor.StepResult res = results.get(currentStep - 1);
+            applyStepResult(res);
+
+            ExecutorSnapshot snapshot = snapshots.get(currentStep);
+            executor.setState(snapshot.k(), snapshot.i(), snapshot.j(), snapshot.dist());
+            logger.log(Logger.Type.STATE, "Шаг назад: откат к шагу " + currentStep);
         }
         updateButtonsState();
     }
@@ -238,12 +296,10 @@ public class Controller {
 
     private void doStepN() {
         String rawInput = controlPanel.getStepNText().toLowerCase();
-
         if (rawInput.equals("k") || rawInput.equals("i") || rawInput.equals("j")) {
             doStepByIteration(rawInput);
             return;
         }
-
         int n;
         try {
             n = Integer.parseInt(rawInput);
@@ -251,113 +307,67 @@ public class Controller {
             logger.log(Logger.Type.ERROR, "N должно быть числом или буквой k, i, j");
             return;
         }
-
         if (n <= 0) {
             logger.log(Logger.Type.ERROR, "N должно быть положительным числом");
             return;
         }
-
         ensureAlgorithmStarted();
-        if (state == State.ALGORITHM_FINISHED)
+        if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps)
             return;
 
         logger.log(Logger.Type.STATE, "Шаг N: выполнение " + n + " шаг(ов)");
-
-        FloydWarshallExecutor.StepResult lastRes = null;
         int performed = 0;
         for (int count = 0; count < n; count++) {
-            if (executor.isFinished())
+            if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps)
                 break;
-            currentStep++;
-            lastRes = executor.stepForward();
+            doStepForward();
             performed++;
-
-            logger.log(Logger.Type.STATE, String.format("Шаг %d: k=%d, i=%d, j=%d, D[%d][%d] %s",
-                    currentStep, lastRes.k(), lastRes.i(), lastRes.j(), lastRes.i(), lastRes.j(),
-                    lastRes.wasUpdate() ? "обновлено " + lastRes.oldValue() + " → " + lastRes.altValue()
-                            : "не обновлено"));
         }
-
-        if (lastRes != null) {
-            applyStepResult(lastRes);
-        }
-
         logger.log(Logger.Type.STATE, "Выполнено " + performed + " шаг(ов)");
-
-        if (executor.isFinished()) {
-            state = State.ALGORITHM_FINISHED;
-            logger.log(Logger.Type.STATE, "Алгоритм завершён (всего шагов: " + totalSteps + ")");
-        }
-        updateButtonsState();
     }
 
     private void doStepByIteration(String mode) {
         ensureAlgorithmStarted();
-        if (state == State.ALGORITHM_FINISHED) {
+        if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps) {
             logger.log(Logger.Type.STATE, "Шаг N (режим " + mode + "): 0 шагов (алгоритм завершён)");
             return;
         }
-
         int n = executor.getN();
         int targetSteps;
-
         switch (mode) {
             case "j" -> {
-                // До начала следующей средней итерации (следующего i)
                 int cj = executor.getCurrentJ();
                 targetSteps = (cj == 0) ? n : (n - cj);
             }
             case "i" -> {
-                // До начала следующей крупной итерации (следующего k)
                 int ci = executor.getCurrentI();
                 int cj = executor.getCurrentJ();
                 targetSteps = (n - ci) * n - cj;
                 if (targetSteps <= 0)
-                    targetSteps = n * n; // уже на границе — полный цикл k
+                    targetSteps = n * n;
             }
             case "k" -> {
-                // Все оставшиеся шаги
                 targetSteps = totalSteps - currentStep;
             }
             default -> targetSteps = 0;
         }
-
         if (targetSteps <= 0) {
             logger.log(Logger.Type.STATE, "Шаг N (режим " + mode + "): 0 шагов");
             return;
         }
-
         logger.log(Logger.Type.STATE, "Шаг N (режим " + mode + "): выполнение до " + targetSteps + " шаг(ов)");
-
-        FloydWarshallExecutor.StepResult lastRes = null;
         int performed = 0;
         for (int count = 0; count < targetSteps; count++) {
-            if (executor.isFinished())
+            if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps)
                 break;
-            currentStep++;
-            lastRes = executor.stepForward();
+            doStepForward();
             performed++;
-            logger.log(Logger.Type.STATE, String.format("Шаг %d: k=%d, i=%d, j=%d, D[%d][%d] %s",
-                    currentStep, lastRes.k(), lastRes.i(), lastRes.j(), lastRes.i(), lastRes.j(),
-                    lastRes.wasUpdate() ? "обновлено " + lastRes.oldValue() + " → " + lastRes.altValue()
-                            : "не обновлено"));
         }
-
-        if (lastRes != null) {
-            applyStepResult(lastRes);
-        }
-
         logger.log(Logger.Type.STATE, "Выполнено " + performed + " шаг(ов)");
-
-        if (executor.isFinished()) {
-            state = State.ALGORITHM_FINISHED;
-            logger.log(Logger.Type.STATE, "Алгоритм завершён (всего шагов: " + totalSteps + ")");
-        }
-        updateButtonsState();
     }
 
     private void doStartPause() {
-        if (state == State.ALGORITHM_FINISHED)
+        if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps)
             return;
         if (isAutoPlaying) {
             if (autoPlayTimeline != null)
@@ -368,7 +378,7 @@ public class Controller {
         } else {
             if (state == State.WAITING_INPUT)
                 doStepForward();
-            if (state == State.ALGORITHM_FINISHED)
+            if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps)
                 return;
             isAutoPlaying = true;
             controlPanel.setStartPauseLabel("Пауза");
@@ -380,10 +390,9 @@ public class Controller {
     private void startAutoPlayTimeline() {
         double duration = 1000.0 / currentSpeed;
         autoPlayTimeline = new Timeline(new KeyFrame(Duration.millis(duration), e -> {
-            if (state == State.ALGORITHM_FINISHED || executor.isFinished()) {
+            if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps) {
                 autoPlayTimeline.stop();
                 isAutoPlaying = false;
-                state = State.ALGORITHM_FINISHED;
                 controlPanel.setStartPauseLabel("Пуск");
                 updateButtonsState();
                 return;
@@ -410,6 +419,8 @@ public class Controller {
         state = State.WAITING_INPUT;
         executor = null;
         currentStep = 0;
+        snapshots.clear();
+        results.clear();
         updateButtonsState();
     }
 
@@ -420,6 +431,8 @@ public class Controller {
         state = State.WAITING_INPUT;
         executor = null;
         currentStep = 0;
+        snapshots.clear();
+        results.clear();
         canvas2.clearAlgorithmHighlight();
         table2.clearAlgorithmHighlight();
         stepDescriptionUpdater.update("Алгоритм не запущен");
@@ -618,7 +631,6 @@ public class Controller {
                     matrixPath = baseName + ".csv";
                     logPath = baseName + ".txt";
                 }
-
                 Integer[][] matrixToSave = (state == State.WAITING_INPUT) ? table1.toMatrix() : resultGraph.snapshot();
                 saveMatrix(new File(matrixPath), matrixToSave);
                 saveLogFile(new File(logPath));
@@ -656,18 +668,20 @@ public class Controller {
     }
 
     private void updateButtonsState() {
-        boolean isFinished = (state == State.ALGORITHM_FINISHED);
         boolean isRunning = (state != State.WAITING_INPUT);
-        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_FORWARD, !isFinished);
-        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_N, !isFinished);
-        controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, !isFinished);
+        boolean canStepForward = (state == State.WAITING_INPUT) || (currentStep < totalSteps);
+
+        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_FORWARD, canStepForward);
+        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_N, canStepForward);
+        controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, canStepForward);
         controlPanel.setEnabled(ControlPanel.ButtonId.RESET, true);
         controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, !isRunning);
         controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, !isRunning);
         controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, !isRunning);
         controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, true);
-        controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, !isFinished);
-        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_BACK, false);
+        controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, canStepForward);
+        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_BACK, currentStep > 0);
+
         table1.setEditingLocked(isRunning);
         controlPanel.setStartPauseLabel(isAutoPlaying ? "Пауза" : "Пуск");
     }

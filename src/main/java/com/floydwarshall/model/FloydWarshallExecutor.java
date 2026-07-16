@@ -1,7 +1,7 @@
 package com.floydwarshall.model;
 
 public final class FloydWarshallExecutor {
-    private final Integer[][] dist;
+    private Integer[][] dist;
     private final int n;
     private int k;
     private int i;
@@ -31,6 +31,18 @@ public final class FloydWarshallExecutor {
 
     public int getN() {
         return n;
+    }
+
+    public Integer[][] getDist() {
+        return MatrixOps.deepCopy(dist);
+    }
+
+    public void setState(int k, int i, int j, Integer[][] dist) {
+        this.k = k;
+        this.i = i;
+        this.j = j;
+        this.dist = MatrixOps.deepCopy(dist);
+        this.isFinished = (k == n);
     }
 
     public StepResult stepForward() {
