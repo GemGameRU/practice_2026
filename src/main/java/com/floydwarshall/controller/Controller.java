@@ -11,6 +11,7 @@ import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.util.Duration;
 import javafx.stage.FileChooser;
+
 import java.io.File;
 
 public class Controller {
@@ -27,15 +28,12 @@ public class Controller {
     private final MatrixTableView table2;
     private final ControlPanel controlPanel;
     private final Logger logger;
-
     private StepDescriptionUpdater stepDescriptionUpdater;
 
-    // Состояние алгоритма
     private FloydWarshallExecutor executor;
     private int currentStep = 0;
     private int totalSteps = 0;
 
-    // Автоматическое выполнение
     private boolean isAutoPlaying = false;
     private Timeline autoPlayTimeline;
     private double currentSpeed = 1.0;
@@ -46,10 +44,10 @@ public class Controller {
     }
 
     public Controller(Graph inputGraph,
-                      SmartGraphView canvas1, SmartGraphView canvas2,
-                      MatrixTableView table1, MatrixTableView table2,
-                      ControlPanel controlPanel,
-                      Logger logger) {
+            SmartGraphView canvas1, SmartGraphView canvas2,
+            MatrixTableView table1, MatrixTableView table2,
+            ControlPanel controlPanel,
+            Logger logger) {
         this.inputGraph = inputGraph;
         this.resultGraph = new Graph(inputGraph);
         this.canvas1 = canvas1;
@@ -58,7 +56,6 @@ public class Controller {
         this.table2 = table2;
         this.controlPanel = controlPanel;
         this.logger = logger;
-
         wire();
         updateButtonsState();
     }
@@ -75,14 +72,18 @@ public class Controller {
         controlPanel.setListener(this::onButton);
         controlPanel.setSpeedListener(this::onSpeedChanged);
 
+        controlPanel.setFixVerticesListener(fixed -> {
+            canvas1.setVerticesFixed(fixed);
+            canvas2.setVerticesFixed(fixed);
+            logger.log(Logger.Type.ACTION, "Фиксация вершин: " + (fixed ? "вкл" : "выкл"));
+        });
         table1.setEditListener((i, j, newValue) -> applyCellEdit(i, j, newValue));
-
         wireSelectionSync(canvas1, table1, canvas2, table2);
         wireSelectionSync(canvas2, table2, canvas1, table1);
     }
 
     private void wireSelectionSync(SmartGraphView canvas, MatrixTableView table,
-                                   SmartGraphView otherCanvas, MatrixTableView otherTable) {
+            SmartGraphView otherCanvas, MatrixTableView otherTable) {
         canvas.setSelectionListener((type, a, b) -> {
             otherTable.clearSelectionSync();
             if (type == SmartGraphView.SelectionType.VERTEX) {
@@ -93,7 +94,6 @@ public class Controller {
                 table.clearSelectionSync();
             }
         });
-
         table.setSelectionListener(new MatrixTableView.CellSelectionListener() {
             @Override
             public void onCellSelected(int i, int j) {
@@ -103,14 +103,14 @@ public class Controller {
 
             @Override
             public void onRowHeaderSelected(int i) {
-                canvas.selectVertex(i);
-                table.selectVertex(i);
+                canvas.selectVertexOutgoing(i);
+                table.selectRow(i);
             }
 
             @Override
             public void onColumnHeaderSelected(int j) {
-                canvas.selectVertex(j);
-                table.selectVertex(j);
+                canvas.selectVertexIncoming(j);
+                table.selectCol(j);
             }
 
             @Override
@@ -151,10 +151,8 @@ public class Controller {
         }
     }
 
-    private void doStepForward() {
-        if (state == State.ALGORITHM_FINISHED)
-            return;
-
+    // --- Инициализация алгоритма (общая для stepForward / stepN) ---
+    private void ensureAlgorithmStarted() {
         if (state == State.WAITING_INPUT) {
             Integer[][] source = table1.toMatrix();
             inputGraph.replaceMatrix(source);
@@ -165,6 +163,13 @@ public class Controller {
             state = State.ALGORITHM_PAUSED;
             logger.log(Logger.Type.STATE, "Алгоритм запущен");
         }
+    }
+
+    // --- Один шаг вперёд ---
+    private void doStepForward() {
+        if (state == State.ALGORITHM_FINISHED)
+            return;
+        ensureAlgorithmStarted();
 
         if (executor.isFinished()) {
             state = State.ALGORITHM_FINISHED;
@@ -176,15 +181,8 @@ public class Controller {
 
         currentStep++;
         FloydWarshallExecutor.StepResult res = executor.stepForward();
-        resultGraph.replaceMatrix(res.dist());
+        applyStepResult(res);
 
-        table2.rebuild(resultGraph);
-        table2.setAlgorithmHighlight(res.i(), res.j(), res.k());
-
-        canvas2.setGraph(resultGraph);
-        canvas2.setAlgorithmHighlight(res.i(), res.j(), res.k());
-
-        updateStepDescription(res);
         logger.log(Logger.Type.STATE, String.format("Шаг %d: k=%d, i=%d, j=%d, D[%d][%d] %s",
                 currentStep, res.k(), res.i(), res.j(), res.i(), res.j(),
                 res.wasUpdate() ? "обновлено " + res.oldValue() + " → " + res.altValue() : "не обновлено"));
@@ -196,12 +194,20 @@ public class Controller {
         updateButtonsState();
     }
 
+    private void applyStepResult(FloydWarshallExecutor.StepResult res) {
+        resultGraph.replaceMatrix(res.dist());
+        table2.rebuild(resultGraph);
+        table2.setAlgorithmHighlight(res.i(), res.j(), res.k(), res.wasUpdate());
+        canvas2.setGraph(resultGraph);
+        canvas2.setAlgorithmHighlight(res.i(), res.j(), res.k(), res.wasUpdate());
+        updateStepDescription(res);
+    }
+
     private void updateStepDescription(FloydWarshallExecutor.StepResult res) {
         StringBuilder sb = new StringBuilder();
         sb.append("Шаг ").append(currentStep).append(" из ").append(totalSteps).append("\n");
-        sb.append("k = ").append(res.k()).append(", i = ").append(res.i()).append(", j = ").append(res.j())
-                .append("\n");
-
+        sb.append("k = ").append(res.k()).append(", i = ").append(res.i())
+                .append(", j = ").append(res.j()).append("\n");
         String oldStr = (res.oldValue() == null) ? "inf" : String.valueOf(res.oldValue());
         if (res.altValue() != null) {
             String dikStr = (res.dik() == null) ? "inf" : String.valueOf(res.dik());
@@ -210,7 +216,6 @@ public class Controller {
                     .append("  и  D[").append(res.i()).append("][").append(res.k()).append("] + D[").append(res.k())
                     .append("][").append(res.j()).append("] = ")
                     .append(dikStr).append(" + ").append(dkjStr).append(" = ").append(res.altValue()).append("\n");
-
             if (res.wasUpdate()) {
                 sb.append("Результат: ").append(res.altValue()).append(" < ").append(oldStr).append(" — обновлено\n");
                 sb.append("Описание: путь из вершины ").append(res.i()).append(" в вершину ").append(res.j())
@@ -232,25 +237,31 @@ public class Controller {
     }
 
     private void doStepN() {
-        int n = controlPanel.getStepN();
+        String rawInput = controlPanel.getStepNText().toLowerCase();
+
+        if (rawInput.equals("k") || rawInput.equals("i") || rawInput.equals("j")) {
+            doStepByIteration(rawInput);
+            return;
+        }
+
+        int n;
+        try {
+            n = Integer.parseInt(rawInput);
+        } catch (NumberFormatException e) {
+            logger.log(Logger.Type.ERROR, "N должно быть числом или буквой k, i, j");
+            return;
+        }
+
         if (n <= 0) {
             logger.log(Logger.Type.ERROR, "N должно быть положительным числом");
             return;
         }
 
-        if (state == State.WAITING_INPUT) {
-            Integer[][] source = table1.toMatrix();
-            inputGraph.replaceMatrix(source);
-            resultGraph.replaceMatrix(source);
-            executor = new FloydWarshallExecutor(source);
-            currentStep = 0;
-            totalSteps = FloydWarshall.totalSteps(inputGraph.size());
-            state = State.ALGORITHM_PAUSED;
-            logger.log(Logger.Type.STATE, "Алгоритм запущен");
-        }
-
+        ensureAlgorithmStarted();
         if (state == State.ALGORITHM_FINISHED)
             return;
+
+        logger.log(Logger.Type.STATE, "Шаг N: выполнение " + n + " шаг(ов)");
 
         FloydWarshallExecutor.StepResult lastRes = null;
         int performed = 0;
@@ -260,23 +271,83 @@ public class Controller {
             currentStep++;
             lastRes = executor.stepForward();
             performed++;
+
+            logger.log(Logger.Type.STATE, String.format("Шаг %d: k=%d, i=%d, j=%d, D[%d][%d] %s",
+                    currentStep, lastRes.k(), lastRes.i(), lastRes.j(), lastRes.i(), lastRes.j(),
+                    lastRes.wasUpdate() ? "обновлено " + lastRes.oldValue() + " → " + lastRes.altValue()
+                            : "не обновлено"));
         }
 
-        if (lastRes == null)
+        if (lastRes != null) {
+            applyStepResult(lastRes);
+        }
+
+        logger.log(Logger.Type.STATE, "Выполнено " + performed + " шаг(ов)");
+
+        if (executor.isFinished()) {
+            state = State.ALGORITHM_FINISHED;
+            logger.log(Logger.Type.STATE, "Алгоритм завершён (всего шагов: " + totalSteps + ")");
+        }
+        updateButtonsState();
+    }
+
+    private void doStepByIteration(String mode) {
+        ensureAlgorithmStarted();
+        if (state == State.ALGORITHM_FINISHED) {
+            logger.log(Logger.Type.STATE, "Шаг N (режим " + mode + "): 0 шагов (алгоритм завершён)");
             return;
+        }
 
-        resultGraph.replaceMatrix(lastRes.dist());
-        table2.rebuild(resultGraph);
-        table2.setAlgorithmHighlight(lastRes.i(), lastRes.j(), lastRes.k());
-        canvas2.setGraph(resultGraph);
-        canvas2.setAlgorithmHighlight(lastRes.i(), lastRes.j(), lastRes.k());
+        int n = executor.getN();
+        int targetSteps;
 
-        updateStepDescription(lastRes);
-        logger.log(Logger.Type.STATE, String.format(
-                "Шаг N: выполнено %d шаг(ов), текущий шаг %d из %d (k=%d, i=%d, j=%d, D[%d][%d] %s)",
-                performed, currentStep, totalSteps, lastRes.k(), lastRes.i(), lastRes.j(),
-                lastRes.i(), lastRes.j(),
-                lastRes.wasUpdate() ? "обновлено " + lastRes.oldValue() + " → " + lastRes.altValue() : "не обновлено"));
+        switch (mode) {
+            case "j" -> {
+                // До начала следующей средней итерации (следующего i)
+                int cj = executor.getCurrentJ();
+                targetSteps = (cj == 0) ? n : (n - cj);
+            }
+            case "i" -> {
+                // До начала следующей крупной итерации (следующего k)
+                int ci = executor.getCurrentI();
+                int cj = executor.getCurrentJ();
+                targetSteps = (n - ci) * n - cj;
+                if (targetSteps <= 0)
+                    targetSteps = n * n; // уже на границе — полный цикл k
+            }
+            case "k" -> {
+                // Все оставшиеся шаги
+                targetSteps = totalSteps - currentStep;
+            }
+            default -> targetSteps = 0;
+        }
+
+        if (targetSteps <= 0) {
+            logger.log(Logger.Type.STATE, "Шаг N (режим " + mode + "): 0 шагов");
+            return;
+        }
+
+        logger.log(Logger.Type.STATE, "Шаг N (режим " + mode + "): выполнение до " + targetSteps + " шаг(ов)");
+
+        FloydWarshallExecutor.StepResult lastRes = null;
+        int performed = 0;
+        for (int count = 0; count < targetSteps; count++) {
+            if (executor.isFinished())
+                break;
+            currentStep++;
+            lastRes = executor.stepForward();
+            performed++;
+            logger.log(Logger.Type.STATE, String.format("Шаг %d: k=%d, i=%d, j=%d, D[%d][%d] %s",
+                    currentStep, lastRes.k(), lastRes.i(), lastRes.j(), lastRes.i(), lastRes.j(),
+                    lastRes.wasUpdate() ? "обновлено " + lastRes.oldValue() + " → " + lastRes.altValue()
+                            : "не обновлено"));
+        }
+
+        if (lastRes != null) {
+            applyStepResult(lastRes);
+        }
+
+        logger.log(Logger.Type.STATE, "Выполнено " + performed + " шаг(ов)");
 
         if (executor.isFinished()) {
             state = State.ALGORITHM_FINISHED;
@@ -288,7 +359,6 @@ public class Controller {
     private void doStartPause() {
         if (state == State.ALGORITHM_FINISHED)
             return;
-
         if (isAutoPlaying) {
             if (autoPlayTimeline != null)
                 autoPlayTimeline.pause();
@@ -300,7 +370,6 @@ public class Controller {
                 doStepForward();
             if (state == State.ALGORITHM_FINISHED)
                 return;
-
             isAutoPlaying = true;
             controlPanel.setStartPauseLabel("Пауза");
             logger.log(Logger.Type.STATE, "Автоматическое выполнение возобновлено");
@@ -329,19 +398,15 @@ public class Controller {
         if (autoPlayTimeline != null)
             autoPlayTimeline.stop();
         isAutoPlaying = false;
-
         Integer[][] source = table1.toMatrix();
         inputGraph.replaceMatrix(source);
         resultGraph.replaceMatrix(source);
-
         table2.rebuild(resultGraph);
         canvas2.setGraph(resultGraph);
         canvas2.clearAlgorithmHighlight();
         table2.clearAlgorithmHighlight();
-
         stepDescriptionUpdater.update("Алгоритм не запущен");
         logger.log(Logger.Type.ACTION, "Алгоритм сброшен");
-
         state = State.WAITING_INPUT;
         executor = null;
         currentStep = 0;
@@ -355,7 +420,6 @@ public class Controller {
         state = State.WAITING_INPUT;
         executor = null;
         currentStep = 0;
-
         canvas2.clearAlgorithmHighlight();
         table2.clearAlgorithmHighlight();
         stepDescriptionUpdater.update("Алгоритм не запущен");
@@ -398,7 +462,6 @@ public class Controller {
     private void applyCellEdit(int i, int j, String newValue) {
         if (i == j)
             return;
-
         Integer v;
         if (newValue == null || newValue.trim().isEmpty() || newValue.trim().equalsIgnoreCase("inf")) {
             v = null;
@@ -416,16 +479,12 @@ public class Controller {
                 return;
             }
         }
-
         inputGraph.set(i, j, v);
         resultGraph.replaceMatrix(inputGraph.snapshot());
-
         canvas1.setGraph(inputGraph);
         canvas2.setGraph(resultGraph);
-
         table1.rebuild(inputGraph);
         table2.rebuild(resultGraph);
-
         logger.log(Logger.Type.ACTION, "Ячейка (" + i + ", " + j + ") изменена: " + (v == null ? "inf" : v));
         resetAlgorithmState();
     }
@@ -436,30 +495,22 @@ public class Controller {
         fileChooser.getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("Graph Files", "*.csv", "*.txt"),
                 new FileChooser.ExtensionFilter("All Files", "*.*"));
-
-        // Открываем диалог загрузки в той же папке, где был последний файл
-        if (lastLoadedFile != null && lastLoadedFile.getParentFile() != null) {
+        if (lastLoadedFile != null && lastLoadedFile.getParentFile() != null)
             fileChooser.setInitialDirectory(lastLoadedFile.getParentFile());
-        }
-
         javafx.stage.Window window = canvas1.getScene() != null ? canvas1.getScene().getWindow() : null;
         File file = fileChooser.showOpenDialog(window);
-
         if (file != null) {
             try {
                 Integer[][] matrix = loadCsvMatrix(file);
                 inputGraph.replaceMatrix(matrix);
                 resultGraph.replaceMatrix(matrix);
-
                 rebuildAll();
                 canvas1.setGraph(inputGraph);
                 canvas2.setGraph(resultGraph);
-
                 resetAlgorithmState();
-
-                // Запоминаем успешный файл
                 lastLoadedFile = file;
-                logger.log(Logger.Type.ACTION, "Загружен файл: " + file.getName() + " (" + inputGraph.size() + " вершин)");
+                logger.log(Logger.Type.ACTION,
+                        "Загружен файл: " + file.getName() + " (" + inputGraph.size() + " вершин)");
             } catch (IllegalArgumentException e) {
                 logger.log(Logger.Type.ERROR, "Ошибка валидации файла: " + e.getMessage());
             } catch (Exception e) {
@@ -470,16 +521,16 @@ public class Controller {
 
     private Integer[][] loadCsvMatrix(File file) throws Exception {
         java.io.BufferedReader reader = new java.io.BufferedReader(
-                new java.io.InputStreamReader(new java.io.FileInputStream(file), java.nio.charset.StandardCharsets.UTF_8));
+                new java.io.InputStreamReader(new java.io.FileInputStream(file),
+                        java.nio.charset.StandardCharsets.UTF_8));
         java.util.List<Integer[]> rows = new java.util.ArrayList<>();
         int lineNumber = 0;
-
         String line;
         while ((line = reader.readLine()) != null) {
             lineNumber++;
             line = line.trim();
-            if (line.isEmpty()) continue;
-
+            if (line.isEmpty())
+                continue;
             String[] parts = line.split(",");
             Integer[] row = new Integer[parts.length];
             for (int j = 0; j < parts.length; j++) {
@@ -489,49 +540,41 @@ public class Controller {
                 } else {
                     try {
                         int weight = Integer.parseInt(val);
-                        // Базовая проверка: веса не могут быть меньше 0
-                        if (weight < 0) {
-                            throw new IllegalArgumentException("Вес ребра не может быть отрицательным (строка " + lineNumber + ", столбец " + (j + 1) + ")");
-                        }
+                        if (weight < 0)
+                            throw new IllegalArgumentException("Вес ребра не может быть отрицательным (строка "
+                                    + lineNumber + ", столбец " + (j + 1) + ")");
                         row[j] = weight;
                     } catch (NumberFormatException e) {
-                        throw new IllegalArgumentException("Некорректное значение ячейки (строка " + lineNumber + ", столбец " + (j + 1) + "): " + val);
+                        throw new IllegalArgumentException("Некорректное значение ячейки (строка " + lineNumber
+                                + ", столбец " + (j + 1) + "): " + val);
                     }
                 }
             }
             rows.add(row);
         }
         reader.close();
-
         int n = rows.size();
-        if (n < 2) {
+        if (n < 2)
             throw new IllegalArgumentException("Матрица должна содержать минимум 2 вершины");
-        }
-        if (n > 20) {
+        if (n > 20)
             throw new IllegalArgumentException("Матрица не может содержать больше 20 вершин");
-        }
-
         for (int i = 0; i < n; i++) {
-            if (rows.get(i).length != n) {
-                throw new IllegalArgumentException("Матрица должна быть квадратной (ошибка в строке " + (i + 1) + ": ожидалось " + n + " столбцов, найдено " + rows.get(i).length + ")");
-            }
-
+            if (rows.get(i).length != n)
+                throw new IllegalArgumentException("Матрица должна быть квадратной (ошибка в строке " + (i + 1) + ")");
             for (int j = 0; j < n; j++) {
                 if (i == j) {
-
-                    if (rows.get(i)[j] != null && rows.get(i)[j] != 0) {
-                        logger.log(Logger.Type.INFO, "Диагональный элемент [" + i + "][" + j + "] автоматически изменён на 0 (в файле было: " + String.valueOf(rows.get(i)[j]) + ")");
-                    }
+                    if (rows.get(i)[j] != null && rows.get(i)[j] != 0)
+                        logger.log(Logger.Type.INFO,
+                                "Диагональный элемент [" + i + "][" + j + "] автоматически изменён на 0");
                     rows.get(i)[j] = 0;
                 } else {
-
-                    if (rows.get(i)[j] != null && rows.get(i)[j] <= 0) {
-                        throw new IllegalArgumentException("Вес ребра вне диагонали должен быть строго положительным (строка " + (i + 1) + ", столбец " + (j + 1) + ", значение: " + rows.get(i)[j] + ")");
-                    }
+                    if (rows.get(i)[j] != null && rows.get(i)[j] <= 0)
+                        throw new IllegalArgumentException(
+                                "Вес ребра вне диагонали должен быть строго положительным (строка " + (i + 1)
+                                        + ", столбец " + (j + 1) + ")");
                 }
             }
         }
-
         return rows.toArray(new Integer[0][]);
     }
 
@@ -541,32 +584,22 @@ public class Controller {
         fileChooser.getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("Graph Files", "*.csv", "*.txt"),
                 new FileChooser.ExtensionFilter("All Files", "*.*"));
-
-        // Автоподстановка директории и имени из вводимого файла
         if (lastLoadedFile != null) {
             File parentDir = lastLoadedFile.getParentFile();
-            if (parentDir != null && parentDir.exists() && parentDir.isDirectory()) {
+            if (parentDir != null && parentDir.exists() && parentDir.isDirectory())
                 fileChooser.setInitialDirectory(parentDir);
-            }
-
-            // Извлекаем имя без расширения, чтобы пользователь мог просто нажать "Сохранить"
             String originalName = lastLoadedFile.getName();
             int dotIndex = originalName.lastIndexOf('.');
             String baseName = (dotIndex > 0) ? originalName.substring(0, dotIndex) : originalName;
-
             fileChooser.setInitialFileName(baseName);
         }
-
         javafx.stage.Window window = canvas1.getScene() != null ? canvas1.getScene().getWindow() : null;
         File file = fileChooser.showSaveDialog(window);
-
         if (file != null) {
             try {
                 String filePath = file.getAbsolutePath();
                 String baseName;
                 String ext = "";
-
-                // Безопасное извлечение базового имени и расширения
                 int dotIndex = filePath.lastIndexOf('.');
                 if (dotIndex > 0 && dotIndex < filePath.length() - 1) {
                     baseName = filePath.substring(0, dotIndex);
@@ -574,10 +607,7 @@ public class Controller {
                 } else {
                     baseName = filePath;
                 }
-
-                String matrixPath;
-                String logPath;
-
+                String matrixPath, logPath;
                 if (".csv".equals(ext)) {
                     matrixPath = baseName + ".csv";
                     logPath = baseName + ".txt";
@@ -590,11 +620,10 @@ public class Controller {
                 }
 
                 Integer[][] matrixToSave = (state == State.WAITING_INPUT) ? table1.toMatrix() : resultGraph.snapshot();
-
                 saveMatrix(new File(matrixPath), matrixToSave);
                 saveLogFile(new File(logPath));
-
-                logger.log(Logger.Type.ACTION, "Сохранено: " + new File(matrixPath).getName() + " и " + new File(logPath).getName());
+                logger.log(Logger.Type.ACTION,
+                        "Сохранено: " + new File(matrixPath).getName() + " и " + new File(logPath).getName());
             } catch (Exception e) {
                 logger.log(Logger.Type.ERROR, "Не удалось сохранить файл: " + e.getMessage());
             }
@@ -603,12 +632,13 @@ public class Controller {
 
     private void saveMatrix(File file, Integer[][] matrix) throws Exception {
         java.io.PrintWriter writer = new java.io.PrintWriter(
-                new java.io.OutputStreamWriter(new java.io.FileOutputStream(file), java.nio.charset.StandardCharsets.UTF_8));
-
+                new java.io.OutputStreamWriter(new java.io.FileOutputStream(file),
+                        java.nio.charset.StandardCharsets.UTF_8));
         for (Integer[] row : matrix) {
             StringBuilder sb = new StringBuilder();
             for (int j = 0; j < row.length; j++) {
-                if (j > 0) sb.append(",");
+                if (j > 0)
+                    sb.append(",");
                 sb.append(row[j] == null ? "inf" : String.valueOf(row[j]));
             }
             writer.println(sb.toString());
@@ -618,18 +648,16 @@ public class Controller {
 
     private void saveLogFile(File file) throws Exception {
         java.io.PrintWriter writer = new java.io.PrintWriter(
-                new java.io.OutputStreamWriter(new java.io.FileOutputStream(file), java.nio.charset.StandardCharsets.UTF_8));
-
-        for (String entry : logger.getEntries()) {
+                new java.io.OutputStreamWriter(new java.io.FileOutputStream(file),
+                        java.nio.charset.StandardCharsets.UTF_8));
+        for (String entry : logger.getEntries())
             writer.println(entry);
-        }
         writer.close();
     }
 
     private void updateButtonsState() {
         boolean isFinished = (state == State.ALGORITHM_FINISHED);
         boolean isRunning = (state != State.WAITING_INPUT);
-
         controlPanel.setEnabled(ControlPanel.ButtonId.STEP_FORWARD, !isFinished);
         controlPanel.setEnabled(ControlPanel.ButtonId.STEP_N, !isFinished);
         controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, !isFinished);
@@ -640,14 +668,8 @@ public class Controller {
         controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, true);
         controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, !isFinished);
         controlPanel.setEnabled(ControlPanel.ButtonId.STEP_BACK, false);
-
         table1.setEditingLocked(isRunning);
-
-        if (isAutoPlaying) {
-            controlPanel.setStartPauseLabel("Пауза");
-        } else {
-            controlPanel.setStartPauseLabel("Пуск");
-        }
+        controlPanel.setStartPauseLabel(isAutoPlaying ? "Пауза" : "Пуск");
     }
 
     private void rebuildAll() {

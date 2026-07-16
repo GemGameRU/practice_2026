@@ -5,15 +5,19 @@ import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.TextFieldTableCell;
+import javafx.scene.input.MouseEvent;
 import javafx.util.StringConverter;
 
 import java.util.ArrayList;
 import java.util.List;
+
 import com.floydwarshall.model.Graph;
 
 public class MatrixTableView {
+
     public interface CellEditListener {
         void onCellEdited(int i, int j, String newValue);
     }
@@ -68,13 +72,15 @@ public class MatrixTableView {
 
     // Алгоритмическая подсветка
     private int hlI = -1, hlJ = -1, hlK = -1;
+    private boolean hlWasUpdate = false;
 
-    // Пользовательское выделение (для жёлтой подсветки по ТЗ)
+    // Пользовательское выделение
     private int selectedVertex = -1;
     private int selectedEdgeFrom = -1, selectedEdgeTo = -1;
-    private final List<Label> colHeaderLabels = new ArrayList<>();
+    private int selectedRow = -1;
+    private int selectedCol = -1;
 
-    // Флаг для блокировки ложных срабатываний выделения при перестройке таблицы
+    private final List<Label> colHeaderLabels = new ArrayList<>();
     private boolean isRebuilding = false;
 
     public MatrixTableView(boolean editable) {
@@ -88,24 +94,52 @@ public class MatrixTableView {
         this.table.setPrefHeight(220);
         this.table.setMinHeight(160);
         setupSelectionListener();
+        setupEmptyAreaClickHandler();
+    }
+
+    private void setupEmptyAreaClickHandler() {
+        table.addEventFilter(MouseEvent.MOUSE_PRESSED, e -> {
+            if (isRebuilding || selectionListener == null)
+                return;
+            Node target = (Node) e.getTarget();
+            boolean onInteractive = false;
+            Node cur = target;
+            while (cur != null && cur != table) {
+                if (cur instanceof TableCell) {
+                    onInteractive = true;
+                    break;
+                }
+                cur = cur.getParent();
+            }
+            if (!onInteractive) {
+                cur = target;
+                while (cur != null && cur != table) {
+                    if (cur instanceof Label) {
+                        onInteractive = true;
+                        break;
+                    }
+                    cur = cur.getParent();
+                }
+            }
+            if (!onInteractive) {
+                selectionListener.onSelectionCleared();
+            }
+        });
     }
 
     public void rebuild(Graph graph) {
-        isRebuilding = true; // Блокируем обработку событий выделения
-
+        isRebuilding = true;
         table.getColumns().clear();
         rows.clear();
         colHeaderLabels.clear();
         int n = graph.size();
 
-        // Row header column
         TableColumn<Row, String> rowHeaderCol = new TableColumn<>("v \\ v");
         rowHeaderCol.setSortable(false);
         rowHeaderCol.setResizable(false);
         rowHeaderCol.setReorderable(false);
         rowHeaderCol.setPrefWidth(50);
         rowHeaderCol.setCellValueFactory(cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getIndex())));
-
         rowHeaderCol.setCellFactory(tv -> {
             TableCell<Row, String> cell = new TableCell<>() {
                 @Override
@@ -118,7 +152,7 @@ public class MatrixTableView {
                     }
                     setText(item);
                     int i = getIndex();
-                    if (selectedVertex == i) {
+                    if (selectedVertex == i || selectedRow == i) {
                         setStyle("-fx-background-color: #fff176; -fx-font-weight: bold;");
                     } else {
                         setStyle("");
@@ -134,7 +168,6 @@ public class MatrixTableView {
         });
         table.getColumns().add(rowHeaderCol);
 
-        // Data rows
         for (int i = 0; i < n; i++) {
             Row row = new Row(i, n);
             for (int j = 0; j < n; j++) {
@@ -144,11 +177,9 @@ public class MatrixTableView {
             rows.add(row);
         }
 
-        // Data columns
         for (int j = 0; j < n; j++) {
             final int colIndex = j;
             TableColumn<Row, String> col = new TableColumn<>();
-
             Label headerLabel = new Label(String.valueOf(j));
             headerLabel.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
             headerLabel.setAlignment(Pos.CENTER);
@@ -159,7 +190,6 @@ public class MatrixTableView {
             });
             col.setGraphic(headerLabel);
             colHeaderLabels.add(headerLabel);
-
             col.setSortable(false);
             col.setResizable(false);
             col.setPrefWidth(56);
@@ -170,7 +200,6 @@ public class MatrixTableView {
                     return new SimpleStringProperty("");
                 return r.getCells().get(colIndex);
             });
-
             if (editable) {
                 col.setCellFactory(tv -> makeEditableCell(colIndex));
                 col.setOnEditCommit(e -> {
@@ -186,18 +215,14 @@ public class MatrixTableView {
         }
 
         table.setItems(FXCollections.observableArrayList(rows));
-
-        // Сбрасываем стандартное выделение JavaFX, чтобы оно не осталось на (0,0)
         table.getSelectionModel().clearSelection();
         table.refresh();
-
-        isRebuilding = false; // Разблокировка
+        isRebuilding = false;
     }
 
     public void setEditingLocked(boolean locked) {
-        if (this.editable) {
+        if (this.editable)
             table.setEditable(!locked);
-        }
     }
 
     private TableCell<Row, String> makeEditableCell(int j) {
@@ -216,7 +241,6 @@ public class MatrixTableView {
                 applyCellStyle(this, i, j);
             }
         };
-
         return cell;
     }
 
@@ -241,19 +265,43 @@ public class MatrixTableView {
         if (i < 0 || j < 0)
             return;
 
+        boolean isDiag = (i == j);
+
+        // 1. Алгоритмическая подсветка (высший приоритет)
+        boolean isAlgIJ = (i == hlI && j == hlJ);
+        boolean isAlgIK = (i == hlI && j == hlK) && !isAlgIJ;
+        boolean isAlgKJ = (i == hlK && j == hlJ) && !isAlgIJ && !isAlgIK;
+
+        if (isAlgIJ) {
+            if (hlWasUpdate) {
+                cell.setStyle("-fx-background-color: #66bb6a; -fx-font-weight: bold;"); // зелёный
+            } else {
+                cell.setStyle("-fx-background-color: #fff176; -fx-font-weight: bold;"); // жёлтый
+            }
+            return;
+        }
+        if (isAlgIK) {
+            cell.setStyle("-fx-background-color: #ffb74d; -fx-font-weight: bold;"); // оранжевый (i)
+            return;
+        }
+        if (isAlgKJ) {
+            cell.setStyle("-fx-background-color: #ce93d8; -fx-font-weight: bold;"); // фиолетовый (j)
+            return;
+        }
+
+        // 2. Пользовательское выделение
         boolean isUserSelected = false;
         if (selectedVertex >= 0 && (i == selectedVertex || j == selectedVertex)) {
             isUserSelected = true;
         } else if (selectedEdgeFrom >= 0 && i == selectedEdgeFrom && j == selectedEdgeTo) {
             isUserSelected = true;
+        } else if (selectedRow >= 0 && i == selectedRow) {
+            isUserSelected = true;
+        } else if (selectedCol >= 0 && j == selectedCol) {
+            isUserSelected = true;
         }
 
-        boolean isAlgCell = (i == hlI && j == hlJ) ||
-                (i == hlI && j == hlK) ||
-                (i == hlK && j == hlJ);
-        boolean isDiag = (i == j);
-
-        if (isUserSelected || isAlgCell) {
+        if (isUserSelected) {
             cell.setStyle("-fx-background-color: #fff176; -fx-font-weight: bold;");
         } else if (isDiag) {
             cell.setStyle("-fx-background-color: #eceff1; -fx-text-fill: #90a4ae;");
@@ -262,10 +310,11 @@ public class MatrixTableView {
         }
     }
 
-    public void setAlgorithmHighlight(int i, int j, int k) {
+    public void setAlgorithmHighlight(int i, int j, int k, boolean wasUpdate) {
         this.hlI = i;
         this.hlJ = j;
         this.hlK = k;
+        this.hlWasUpdate = wasUpdate;
         table.refresh();
     }
 
@@ -273,6 +322,7 @@ public class MatrixTableView {
         this.hlI = -1;
         this.hlJ = -1;
         this.hlK = -1;
+        this.hlWasUpdate = false;
         table.refresh();
     }
 
@@ -280,6 +330,8 @@ public class MatrixTableView {
         this.selectedVertex = v;
         this.selectedEdgeFrom = -1;
         this.selectedEdgeTo = -1;
+        this.selectedRow = -1;
+        this.selectedCol = -1;
         updateHeaderStyles();
         table.refresh();
     }
@@ -288,6 +340,28 @@ public class MatrixTableView {
         this.selectedVertex = -1;
         this.selectedEdgeFrom = from;
         this.selectedEdgeTo = to;
+        this.selectedRow = -1;
+        this.selectedCol = -1;
+        updateHeaderStyles();
+        table.refresh();
+    }
+
+    public void selectRow(int i) {
+        this.selectedVertex = -1;
+        this.selectedEdgeFrom = -1;
+        this.selectedEdgeTo = -1;
+        this.selectedRow = i;
+        this.selectedCol = -1;
+        updateHeaderStyles();
+        table.refresh();
+    }
+
+    public void selectCol(int j) {
+        this.selectedVertex = -1;
+        this.selectedEdgeFrom = -1;
+        this.selectedEdgeTo = -1;
+        this.selectedRow = -1;
+        this.selectedCol = j;
         updateHeaderStyles();
         table.refresh();
     }
@@ -296,6 +370,8 @@ public class MatrixTableView {
         this.selectedVertex = -1;
         this.selectedEdgeFrom = -1;
         this.selectedEdgeTo = -1;
+        this.selectedRow = -1;
+        this.selectedCol = -1;
         updateHeaderStyles();
         table.getSelectionModel().clearSelection();
         table.refresh();
@@ -303,7 +379,7 @@ public class MatrixTableView {
 
     private void updateHeaderStyles() {
         for (int c = 0; c < colHeaderLabels.size(); c++) {
-            if (selectedVertex == c) {
+            if (selectedVertex == c || selectedCol == c) {
                 colHeaderLabels.get(c).setStyle("-fx-background-color: #fff176; -fx-font-weight: bold;");
             } else {
                 colHeaderLabels.get(c).setStyle("");
@@ -313,10 +389,8 @@ public class MatrixTableView {
 
     private void setupSelectionListener() {
         Runnable updateSelection = () -> {
-            // ГЛАВНОЕ ИСПРАВЛЕНИЕ: Игнорируем события фокуса, пока таблица перестраивается
             if (isRebuilding || selectionListener == null)
                 return;
-
             @SuppressWarnings("unchecked")
             TablePosition<Row, ?> pos = table.getFocusModel().getFocusedCell();
             if (pos == null || (pos.getRow() < 0 && pos.getColumn() <= 0)) {

@@ -17,11 +17,26 @@ public final class FloydWarshallExecutor {
         this.isFinished = false;
     }
 
+    public int getCurrentK() {
+        return k;
+    }
+
+    public int getCurrentI() {
+        return i;
+    }
+
+    public int getCurrentJ() {
+        return j;
+    }
+
+    public int getN() {
+        return n;
+    }
+
     public StepResult stepForward() {
         if (isFinished) {
             return new StepResult(k, i, j, false, null, null, null, null, "Алгоритм завершён", dist);
         }
-
         int currK = k, currI = i, currJ = j;
         Integer oldValue = dist[i][j];
         Integer dik = dist[i][k];
@@ -48,7 +63,6 @@ public final class FloydWarshallExecutor {
             }
         }
 
-        // Инкремент индексов
         j++;
         if (j == n) {
             j = 0;

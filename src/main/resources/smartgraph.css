@@ -23,21 +23,45 @@
     -fx-effect: dropshadow(gaussian, rgb(255, 255, 255), 8, 0.2, 0, 4);
 }
 
-/* Algorithm Highlights */
 .vertex-k {
-    -fx-fill: #29b6f6;
-    -fx-stroke: #0288d1;
+    -fx-fill: #0288d1;
+    -fx-stroke: #01579b;
+    -fx-stroke-width: 4;
+    -fx-radius: 28;
+}
+
+.vertex-i {
+    -fx-fill: #ffb74d;
+    -fx-stroke: #f57c00;
     -fx-stroke-width: 3;
 }
 
-.vertex-ij {
-    -fx-fill: #4fc3f7;
-    -fx-stroke: #0288d1;
+.vertex-j {
+    -fx-fill: #ce93d8;
+    -fx-stroke: #8e24aa;
     -fx-stroke-width: 3;
 }
 
-.edge-highlight {
-    -fx-stroke: #4fc3f7;
+.edge-ij {
+    -fx-stroke: #fff176;
+    -fx-fill: transparent;
+    -fx-stroke-width: 3;
+}
+
+.edge-ij-updated {
+    -fx-stroke: #43a047;
+    -fx-fill: transparent;
+    -fx-stroke-width: 4;
+}
+
+.edge-ik {
+    -fx-stroke: #ffb74d;
+    -fx-fill: transparent;
+    -fx-stroke-width: 3;
+}
+
+.edge-kj {
+    -fx-stroke: #ce93d8;
     -fx-fill: transparent;
     -fx-stroke-width: 3;
 }

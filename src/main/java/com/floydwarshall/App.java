@@ -25,7 +25,6 @@ import javafx.stage.Stage;
 public class App extends Application {
     private static final double WINDOW_W = 1280;
     private static final double WINDOW_H = 860;
-
     private Logger logger;
     private Graph inputGraph;
     private SmartGraphView canvas1;
@@ -64,7 +63,8 @@ public class App extends Application {
         stepDescriptionField.setEditable(false);
         stepDescriptionField.setWrapText(true);
         stepDescriptionField.setPrefWidth(420);
-        stepDescriptionField.setPrefRowCount(5);
+        stepDescriptionField.setPrefRowCount(8);
+        stepDescriptionField.setMinHeight(120);
         stepDescriptionField.setStyle("-fx-font-family: 'Monospace'; -fx-font-size: 12px;");
 
         LogPanel logPanel = new LogPanel(logger);
@@ -97,10 +97,11 @@ public class App extends Application {
 
         VBox center = new VBox(6, canvasesBox, tablesBox, controlsBox, logBox);
         VBox.setVgrow(logBox, Priority.ALWAYS);
+
         BorderPane root = new BorderPane();
         root.setCenter(center);
-        Scene scene = new Scene(root, WINDOW_W, WINDOW_H);
 
+        Scene scene = new Scene(root, WINDOW_W, WINDOW_H);
         scene.getStylesheets().add(getClass().getResource("/smartgraph.css").toExternalForm());
 
         scene.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
@@ -110,12 +111,11 @@ public class App extends Application {
                 table1.clearSelectionSync();
                 table2.clearSelectionSync();
             } else if (e.getCode() == KeyCode.RIGHT) {
-                // Обработка нажатия стрелки вправо для шага вперед
                 controller.stepForward();
             }
         });
 
-        primaryStage.setTitle("Флойд-Уоршалл — Версия 1");
+        primaryStage.setTitle("Флойд-Уоршалл — Версия 2");
         primaryStage.setScene(scene);
         primaryStage.setMinWidth(960);
         primaryStage.setMinHeight(680);
@@ -123,7 +123,6 @@ public class App extends Application {
 
         canvas1.init();
         canvas2.init();
-
         canvas1.widthProperty().addListener(o -> canvas1.draw());
         canvas1.heightProperty().addListener(o -> canvas1.draw());
         canvas2.widthProperty().addListener(o -> canvas2.draw());
