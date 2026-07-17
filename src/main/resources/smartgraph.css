@@ -5,21 +5,8 @@
     -fx-stroke-width: 3;
 }
 
-.vertex:hover {
-    -fx-stroke: #c2c561;
-    -fx-fill: transparent;
-    -fx-stroke-width: 4;
-
-}
-
 .edge {
     -fx-stroke: #5b5b5b;
-    -fx-fill: transparent;
-    -fx-stroke-width: 3;
-}
-
-.edge:hover {
-    -fx-stroke: #c2c561;
     -fx-fill: transparent;
     -fx-stroke-width: 4;
 }

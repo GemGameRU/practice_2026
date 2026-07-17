@@ -14,6 +14,7 @@ import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.ScrollEvent;
+import javafx.geometry.Bounds;
 import javafx.geometry.Pos;
 
 import java.net.URISyntaxException;
@@ -101,19 +102,68 @@ public class SmartGraphView extends BorderPane {
             if (event.getButton() != MouseButton.PRIMARY || event.getClickCount() != 1)
                 return;
             Node target = (Node) pick(this, event.getSceneX(), event.getSceneY());
+            SmartGraphVertex<Integer> pickedVertex = null;
+            SmartGraphEdge<EdgeWeight, Integer> pickedEdge = null;
+
             if (target instanceof SmartGraphVertex) {
                 @SuppressWarnings("unchecked")
                 SmartGraphVertex<Integer> v = (SmartGraphVertex<Integer>) target;
-                selectedVertex = v.getUnderlyingVertex().element();
+                pickedVertex = v;
+            } else if (target instanceof SmartGraphEdge) {
+                @SuppressWarnings("unchecked")
+                SmartGraphEdge<EdgeWeight, Integer> e = (SmartGraphEdge<EdgeWeight, Integer>) target;
+                pickedEdge = e;
+            } else {
+                double clickX = event.getSceneX();
+                double clickY = event.getSceneY();
+                double minDist = Double.MAX_VALUE;
+                Edge<EdgeWeight, Integer> closestEdge = null;
+
+                for (Edge<EdgeWeight, Integer> e : smartGraph.edges()) {
+                    Vertex<Integer>[] inc = e.vertices();
+                    int u = inc[0].element();
+                    int v = inc[1].element();
+
+                    SmartStylableNode nodeU = graphView.getStylableVertex(u);
+                    SmartStylableNode nodeV = graphView.getStylableVertex(v);
+
+                    if (nodeU instanceof Node nU && nodeV instanceof Node nV) {
+                        Bounds bU = nU.localToScene(nU.getBoundsInLocal());
+                        Bounds bV = nV.localToScene(nV.getBoundsInLocal());
+
+                        // Координаты центров вершин на экране
+                        double x1 = bU.getMinX() + bU.getWidth() / 2.0;
+                        double y1 = bU.getMinY() + bU.getHeight() / 2.0;
+                        double x2 = bV.getMinX() + bV.getWidth() / 2.0;
+                        double y2 = bV.getMinY() + bV.getHeight() / 2.0;
+
+                        double dist = distanceToSegment(clickX, clickY, x1, y1, x2, y2);
+                        if (dist < minDist && dist <= 15.0) {
+                            minDist = dist;
+                            closestEdge = e;
+                        }
+                    }
+                }
+
+                if (closestEdge != null) {
+                    SmartStylableNode edgeNode = graphView.getStylableEdge(closestEdge);
+                    if (edgeNode instanceof SmartGraphEdge) {
+                        @SuppressWarnings("unchecked")
+                        SmartGraphEdge<EdgeWeight, Integer> se = (SmartGraphEdge<EdgeWeight, Integer>) edgeNode;
+                        pickedEdge = se;
+                    }
+                }
+            }
+
+            if (pickedVertex != null) {
+                selectedVertex = pickedVertex.getUnderlyingVertex().element();
                 selectedEdge = null;
                 selectedVertexEdges = -1;
                 applyStylesAsync();
                 if (listener != null)
                     listener.onSelection(SelectionType.VERTEX, selectedVertex, -1);
-            } else if (target instanceof SmartGraphEdge) {
-                @SuppressWarnings("unchecked")
-                SmartGraphEdge<EdgeWeight, Integer> e = (SmartGraphEdge<EdgeWeight, Integer>) target;
-                Edge<EdgeWeight, Integer> edge = e.getUnderlyingEdge();
+            } else if (pickedEdge != null) {
+                Edge<EdgeWeight, Integer> edge = pickedEdge.getUnderlyingEdge();
                 Vertex<Integer>[] verts = edge.vertices();
                 int u = verts[0].element();
                 int v = verts[1].element();
@@ -145,6 +195,19 @@ public class SmartGraphView extends BorderPane {
             }
             event.consume();
         });
+    }
+
+    private double distanceToSegment(double px, double py, double x1, double y1, double x2, double y2) {
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        if (dx == 0 && dy == 0) {
+            return Math.hypot(px - x1, py - y1);
+        }
+        double t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
+        t = Math.max(0, Math.min(1, t));
+        double closestX = x1 + t * dx;
+        double closestY = y1 + t * dy;
+        return Math.hypot(px - closestX, py - closestY);
     }
 
     public void init() {
