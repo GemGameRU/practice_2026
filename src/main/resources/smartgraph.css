@@ -2,13 +2,26 @@
 .vertex {
     -fx-fill: #ffffff;
     -fx-stroke: #37474f;
-    -fx-stroke-width: 2;
+    -fx-stroke-width: 3;
+}
+
+.vertex:hover {
+    -fx-stroke: #c2c561;
+    -fx-fill: transparent;
+    -fx-stroke-width: 4;
+
 }
 
 .edge {
-    -fx-stroke: #607d8b;
+    -fx-stroke: #5b5b5b;
     -fx-fill: transparent;
-    -fx-stroke-width: 2;
+    -fx-stroke-width: 3;
+}
+
+.edge:hover {
+    -fx-stroke: #c2c561;
+    -fx-fill: transparent;
+    -fx-stroke-width: 4;
 }
 
 .edge-label {
