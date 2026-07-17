@@ -54,7 +54,6 @@ public class Controller {
     private List<FloydWarshallExecutor.StepResult> results = new ArrayList<>();
 
     private boolean isTableDirty = false;
-    private Integer[][] committedMatrix = null;
 
     public interface StepDescriptionUpdater {
         void update(String text);
@@ -731,8 +730,8 @@ public class Controller {
             controlPanel.setEnabled(ControlPanel.ButtonId.STEP_N, canStep && !isFinished);
             controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, canStep && !isFinished);
             controlPanel.setEnabled(ControlPanel.ButtonId.RESET, true);
+            controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, !isRunning);
             controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, !isRunning && inputGraph.size() > 2);
-            controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, !isRunning);
             controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, !isRunning);
             controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, true);
             controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, canStep && !isFinished);
