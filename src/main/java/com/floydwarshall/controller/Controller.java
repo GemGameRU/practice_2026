@@ -295,7 +295,7 @@ public class Controller {
     }
 
     private void doStepN() {
-        String rawInput = controlPanel.getStepNText().toLowerCase();
+        String rawInput = controlPanel.getStepNText().toLowerCase().trim();
         if (rawInput.equals("k") || rawInput.equals("i") || rawInput.equals("j")) {
             doStepByIteration(rawInput);
             return;
