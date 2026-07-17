@@ -207,9 +207,11 @@ public class Controller {
                     executor.getDist()));
             currentStep++;
             applyStepResult(res);
+            String oldStr = (res.oldValue() == null) ? "inf" : String.valueOf(res.oldValue());
+            String altStr = (res.altValue() == null) ? "inf" : String.valueOf(res.altValue());
             logger.log(Logger.Type.STATE, String.format("Шаг %d: k=%d, i=%d, j=%d, D[%d][%d] %s",
                     currentStep, res.k(), res.i(), res.j(), res.i(), res.j(),
-                    res.wasUpdate() ? "обновлено " + res.oldValue() + " → " + res.altValue() : "не обновлено"));
+                    res.wasUpdate() ? "обновлено " + oldStr + " → " + altStr : "не обновлено"));
         }
 
         if (executor.isFinished() && currentStep >= totalSteps) {
@@ -731,7 +733,8 @@ public class Controller {
             controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, canStep && !isFinished);
             controlPanel.setEnabled(ControlPanel.ButtonId.RESET, true);
             controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, !isRunning);
-            controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, !isRunning && inputGraph.size() > 2);
+            controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX,
+                    !isRunning && inputGraph.size() > 1 && inputGraph.size() >= 2);
             controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, !isRunning);
             controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, true);
             controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, canStep && !isFinished);
