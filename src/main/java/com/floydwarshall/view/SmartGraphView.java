@@ -138,7 +138,7 @@ public class SmartGraphView extends BorderPane {
                         double y2 = bV.getMinY() + bV.getHeight() / 2.0;
 
                         double dist = distanceToSegment(clickX, clickY, x1, y1, x2, y2);
-                        if (dist < minDist && dist <= 15.0) {
+                        if (dist < minDist && dist <= 10.0) {
                             minDist = dist;
                             closestEdge = e;
                         }
