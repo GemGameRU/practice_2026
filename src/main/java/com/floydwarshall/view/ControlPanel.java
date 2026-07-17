@@ -3,9 +3,9 @@ package com.floydwarshall.view;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
-import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -32,7 +32,8 @@ public class ControlPanel {
     private final ComboBox<String> speedCombo;
     private Consumer<String> speedListener;
 
-    private final CheckBox fixVerticesCheck;
+    // Заменяем CheckBox на ToggleButton (переключатель)
+    private final ToggleButton fixVerticesToggle;
     private Consumer<Boolean> fixVerticesListener;
 
     public ControlPanel() {
@@ -63,12 +64,14 @@ public class ControlPanel {
 
         Button removeVertex = makeButton("Удалить вершину");
 
-        fixVerticesCheck = new CheckBox("Фиксировать вершины");
-        fixVerticesCheck.setStyle("-fx-font-size: 11px;");
-        fixVerticesCheck.setMaxHeight(Double.MAX_VALUE);
-        fixVerticesCheck.setOnAction(e -> {
+        // Инициализация переключателя фиксации вершин
+        fixVerticesToggle = new ToggleButton("Фиксировать вершины");
+        fixVerticesToggle.setSelected(false); // По умолчанию неактивный (не выбран)
+        fixVerticesToggle.setStyle("-fx-font-size: 11px;");
+        fixVerticesToggle.setMaxHeight(Double.MAX_VALUE);
+        fixVerticesToggle.setOnAction(e -> {
             if (fixVerticesListener != null) {
-                fixVerticesListener.accept(fixVerticesCheck.isSelected());
+                fixVerticesListener.accept(fixVerticesToggle.isSelected());
             }
         });
 
@@ -119,7 +122,7 @@ public class ControlPanel {
                 b.setMaxWidth(Double.MAX_VALUE);
         }
 
-        HBox row3 = new HBox(8, fixVerticesCheck);
+        HBox row3 = new HBox(8, fixVerticesToggle);
         row3.setPadding(new Insets(2, 4, 4, 4));
         row3.setAlignment(Pos.CENTER_LEFT);
 
@@ -177,5 +180,9 @@ public class ControlPanel {
 
     public String getStepNText() {
         return stepNField.getText().trim();
+    }
+
+    public boolean isFixVerticesSelected() {
+        return fixVerticesToggle.isSelected();
     }
 }

@@ -23,35 +23,42 @@
     -fx-effect: dropshadow(gaussian, rgb(255, 255, 255), 8, 0.2, 0, 4);
 }
 
+/* ==========================================
+   Algorithm Highlights (Вершины и Рёбра)
+   ========================================== */
+
+/* Вершина k — выделяется особо (насыщенный цвет + увеличение + свечение) */
 .vertex-k {
-    -fx-fill: #0288d1;
-    -fx-stroke: #01579b;
-    -fx-stroke-width: 4;
-    -fx-radius: 28;
+    -fx-fill: #e53935;   /* Насыщенный красный цвет */
+    -fx-stroke: #b71c1c; /* Темно-красный ободок */
+    -fx-stroke-width: 2; /* Стандартная толщина ободка (как у обычных вершин) */
+    /* Убраны -fx-radius и увеличение */
 }
 
 .vertex-i {
-    -fx-fill: #ffb74d;
+    -fx-fill: #ffb74d; /* Оранжевый */
     -fx-stroke: #f57c00;
     -fx-stroke-width: 3;
 }
 
 .vertex-j {
-    -fx-fill: #ce93d8;
+    -fx-fill: #ce93d8; /* Фиолетовый */
     -fx-stroke: #8e24aa;
     -fx-stroke-width: 3;
 }
 
 .edge-ij {
-    -fx-stroke: #fff176;
+    -fx-stroke: #fff176; /* Желтый */
     -fx-fill: transparent;
     -fx-stroke-width: 3;
 }
 
+/* Ребро i->j при успешном обновлении (зеленый + свечение) */
 .edge-ij-updated {
-    -fx-stroke: #43a047;
+    -fx-stroke: #43a047; /* Насыщенный зеленый */
     -fx-fill: transparent;
     -fx-stroke-width: 4;
+    -fx-effect: dropshadow(gaussian, rgba(67, 160, 71, 0.8), 10, 0.5, 0, 0);
 }
 
 .edge-ik {
@@ -66,7 +73,9 @@
     -fx-stroke-width: 3;
 }
 
-/* User Selection Sync */
+/* ==========================================
+   User Selection Sync (Ручное выделение)
+   ========================================== */
 .vertex-selected {
     -fx-stroke: #fff176;
     -fx-fill: transparent;
