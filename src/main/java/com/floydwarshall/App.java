@@ -12,6 +12,9 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
+import javafx.scene.control.Menu;
+import javafx.scene.control.MenuBar;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.TextArea;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
@@ -25,6 +28,7 @@ import javafx.stage.Stage;
 public class App extends Application {
     private static final double WINDOW_W = 1280;
     private static final double WINDOW_H = 860;
+
     private Logger logger;
     private Graph inputGraph;
     private SmartGraphView canvas1;
@@ -73,6 +77,14 @@ public class App extends Application {
                 inputGraph, canvas1, canvas2, table1, table2, controlPanel, logger);
         controller.setStepDescriptionUpdater(text -> stepDescriptionField.setText(text));
 
+        // Меню для генерации графа (чтобы не нарушать правило 10 кнопок на панели)
+        MenuBar menuBar = new MenuBar();
+        Menu graphMenu = new Menu("Граф");
+        MenuItem generateItem = new MenuItem("Сгенерировать случайный...");
+        generateItem.setOnAction(e -> controller.showGeneratorDialog(primaryStage));
+        graphMenu.getItems().add(generateItem);
+        menuBar.getMenus().add(graphMenu);
+
         HBox canvasesBox = new HBox(8, canvas1, canvas2);
         canvasesBox.setPadding(new Insets(6));
         HBox.setHgrow(canvas1, Priority.ALWAYS);
@@ -99,6 +111,7 @@ public class App extends Application {
         VBox.setVgrow(logBox, Priority.ALWAYS);
 
         BorderPane root = new BorderPane();
+        root.setTop(menuBar);
         root.setCenter(center);
 
         Scene scene = new Scene(root, WINDOW_W, WINDOW_H);
@@ -125,6 +138,7 @@ public class App extends Application {
 
         canvas1.init();
         canvas2.init();
+
         canvas1.widthProperty().addListener(o -> canvas1.draw());
         canvas1.heightProperty().addListener(o -> canvas1.draw());
         canvas2.widthProperty().addListener(o -> canvas2.draw());

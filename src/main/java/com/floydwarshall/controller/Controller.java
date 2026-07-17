@@ -4,21 +4,29 @@ import com.floydwarshall.logging.Logger;
 import com.floydwarshall.model.FloydWarshall;
 import com.floydwarshall.model.FloydWarshallExecutor;
 import com.floydwarshall.model.Graph;
+import com.floydwarshall.model.GraphGenerator;
 import com.floydwarshall.model.MatrixOps;
 import com.floydwarshall.view.ControlPanel;
 import com.floydwarshall.view.SmartGraphView;
 import com.floydwarshall.view.MatrixTableView;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.layout.GridPane;
 import javafx.util.Duration;
 import javafx.stage.FileChooser;
+
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+import java.util.Random;
 
 public class Controller {
     private enum State {
-        WAITING_INPUT, ALGORITHM_PAUSED, ALGORITHM_FINISHED
+        WAITING_INPUT, ALGORITHM_PAUSED, AUTO_PLAYING, ALGORITHM_FINISHED, IO_ERROR
     }
 
     private State state = State.WAITING_INPUT;
@@ -30,12 +38,11 @@ public class Controller {
     private final MatrixTableView table2;
     private final ControlPanel controlPanel;
     private final Logger logger;
+
     private StepDescriptionUpdater stepDescriptionUpdater;
     private FloydWarshallExecutor executor;
-
     private int currentStep = 0;
     private int totalSteps = 0;
-    private boolean isAutoPlaying = false;
     private Timeline autoPlayTimeline;
     private double currentSpeed = 1.0;
     private File lastLoadedFile = null;
@@ -96,13 +103,12 @@ public class Controller {
             SmartGraphView otherCanvas, MatrixTableView otherTable) {
         canvas.setSelectionListener((type, a, b) -> {
             otherTable.clearSelectionSync();
-            if (type == SmartGraphView.SelectionType.VERTEX) {
+            if (type == SmartGraphView.SelectionType.VERTEX)
                 table.selectVertex(a);
-            } else if (type == SmartGraphView.SelectionType.EDGE) {
+            else if (type == SmartGraphView.SelectionType.EDGE)
                 table.selectEdge(a, b);
-            } else {
+            else
                 table.clearSelectionSync();
-            }
         });
         table.setSelectionListener(new MatrixTableView.CellSelectionListener() {
             @Override
@@ -152,7 +158,7 @@ public class Controller {
             String val = speedStr.replace("x", "");
             currentSpeed = Double.parseDouble(val);
             logger.log(Logger.Type.ACTION, "Скорость: " + currentSpeed + "x");
-            if (isAutoPlaying && autoPlayTimeline != null) {
+            if (state == State.AUTO_PLAYING && autoPlayTimeline != null) {
                 autoPlayTimeline.stop();
                 startAutoPlayTimeline();
             }
@@ -169,11 +175,9 @@ public class Controller {
             executor = new FloydWarshallExecutor(source);
             currentStep = 0;
             totalSteps = FloydWarshall.totalSteps(inputGraph.size());
-
             snapshots.clear();
             results.clear();
             snapshots.add(new ExecutorSnapshot(0, 0, 0, MatrixOps.deepCopy(source)));
-
             state = State.ALGORITHM_PAUSED;
             logger.log(Logger.Type.STATE, "Алгоритм запущен");
         }
@@ -185,29 +189,22 @@ public class Controller {
         ensureAlgorithmStarted();
 
         if (currentStep < results.size()) {
-            // Идем вперед по уже пройденной истории
             currentStep++;
             FloydWarshallExecutor.StepResult res = results.get(currentStep - 1);
             applyStepResult(res);
-
             ExecutorSnapshot nextSnapshot = snapshots.get(currentStep);
             executor.setState(nextSnapshot.k(), nextSnapshot.i(), nextSnapshot.j(), nextSnapshot.dist());
-
             logger.log(Logger.Type.STATE, String.format("Шаг %d (из истории): k=%d, i=%d, j=%d",
                     currentStep, res.k(), res.i(), res.j()));
         } else {
-            // Новый шаг
             ExecutorSnapshot before = snapshots.get(currentStep);
             executor.setState(before.k(), before.i(), before.j(), before.dist());
-
             FloydWarshallExecutor.StepResult res = executor.stepForward();
             results.add(res);
             snapshots.add(new ExecutorSnapshot(executor.getCurrentK(), executor.getCurrentI(), executor.getCurrentJ(),
                     executor.getDist()));
-
             currentStep++;
             applyStepResult(res);
-
             logger.log(Logger.Type.STATE, String.format("Шаг %d: k=%d, i=%d, j=%d, D[%d][%d] %s",
                     currentStep, res.k(), res.i(), res.j(), res.i(), res.j(),
                     res.wasUpdate() ? "обновлено " + res.oldValue() + " → " + res.altValue() : "не обновлено"));
@@ -215,8 +212,10 @@ public class Controller {
 
         if (executor.isFinished() && currentStep >= totalSteps) {
             state = State.ALGORITHM_FINISHED;
+            if (autoPlayTimeline != null)
+                autoPlayTimeline.stop();
             logger.log(Logger.Type.STATE, "Алгоритм завершён (всего шагов: " + totalSteps + ")");
-        } else {
+        } else if (state != State.AUTO_PLAYING) {
             state = State.ALGORITHM_PAUSED;
         }
         updateButtonsState();
@@ -225,10 +224,8 @@ public class Controller {
     private void doStepBackward() {
         if (state == State.WAITING_INPUT || currentStep == 0)
             return;
-
-        if (state == State.ALGORITHM_FINISHED) {
+        if (state == State.ALGORITHM_FINISHED)
             state = State.ALGORITHM_PAUSED;
-        }
 
         currentStep--;
         if (currentStep == 0) {
@@ -244,7 +241,6 @@ public class Controller {
         } else {
             FloydWarshallExecutor.StepResult res = results.get(currentStep - 1);
             applyStepResult(res);
-
             ExecutorSnapshot snapshot = snapshots.get(currentStep);
             executor.setState(snapshot.k(), snapshot.i(), snapshot.j(), snapshot.dist());
             logger.log(Logger.Type.STATE, "Шаг назад: откат к шагу " + currentStep);
@@ -311,6 +307,7 @@ public class Controller {
             logger.log(Logger.Type.ERROR, "N должно быть положительным числом");
             return;
         }
+
         ensureAlgorithmStarted();
         if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps)
             return;
@@ -346,15 +343,14 @@ public class Controller {
                 if (targetSteps <= 0)
                     targetSteps = n * n;
             }
-            case "k" -> {
-                targetSteps = totalSteps - currentStep;
-            }
+            case "k" -> targetSteps = totalSteps - currentStep;
             default -> targetSteps = 0;
         }
         if (targetSteps <= 0) {
             logger.log(Logger.Type.STATE, "Шаг N (режим " + mode + "): 0 шагов");
             return;
         }
+
         logger.log(Logger.Type.STATE, "Шаг N (режим " + mode + "): выполнение до " + targetSteps + " шаг(ов)");
         int performed = 0;
         for (int count = 0; count < targetSteps; count++) {
@@ -369,22 +365,22 @@ public class Controller {
     private void doStartPause() {
         if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps)
             return;
-        if (isAutoPlaying) {
+
+        if (state == State.AUTO_PLAYING) {
             if (autoPlayTimeline != null)
                 autoPlayTimeline.pause();
-            isAutoPlaying = false;
-            controlPanel.setStartPauseLabel("Пуск");
+            state = State.ALGORITHM_PAUSED;
             logger.log(Logger.Type.STATE, "Пауза на шаге " + currentStep);
         } else {
             if (state == State.WAITING_INPUT)
-                doStepForward();
+                ensureAlgorithmStarted();
             if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps)
                 return;
-            isAutoPlaying = true;
-            controlPanel.setStartPauseLabel("Пауза");
+            state = State.AUTO_PLAYING;
             logger.log(Logger.Type.STATE, "Автоматическое выполнение возобновлено");
             startAutoPlayTimeline();
         }
+        updateButtonsState();
     }
 
     private void startAutoPlayTimeline() {
@@ -392,8 +388,7 @@ public class Controller {
         autoPlayTimeline = new Timeline(new KeyFrame(Duration.millis(duration), e -> {
             if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps) {
                 autoPlayTimeline.stop();
-                isAutoPlaying = false;
-                controlPanel.setStartPauseLabel("Пуск");
+                state = State.ALGORITHM_FINISHED;
                 updateButtonsState();
                 return;
             }
@@ -406,7 +401,6 @@ public class Controller {
     private void doReset() {
         if (autoPlayTimeline != null)
             autoPlayTimeline.stop();
-        isAutoPlaying = false;
         Integer[][] source = table1.toMatrix();
         inputGraph.replaceMatrix(source);
         resultGraph.replaceMatrix(source);
@@ -427,7 +421,6 @@ public class Controller {
     private void resetAlgorithmState() {
         if (autoPlayTimeline != null)
             autoPlayTimeline.stop();
-        isAutoPlaying = false;
         state = State.WAITING_INPUT;
         executor = null;
         currentStep = 0;
@@ -476,9 +469,9 @@ public class Controller {
         if (i == j)
             return;
         Integer v;
-        if (newValue == null || newValue.trim().isEmpty() || newValue.trim().equalsIgnoreCase("inf")) {
+        if (newValue == null || newValue.trim().isEmpty() || newValue.trim().equalsIgnoreCase("inf"))
             v = null;
-        } else {
+        else {
             try {
                 v = Integer.parseInt(newValue.trim());
                 if (v <= 0) {
@@ -510,9 +503,11 @@ public class Controller {
                 new FileChooser.ExtensionFilter("All Files", "*.*"));
         if (lastLoadedFile != null && lastLoadedFile.getParentFile() != null)
             fileChooser.setInitialDirectory(lastLoadedFile.getParentFile());
+
         javafx.stage.Window window = canvas1.getScene() != null ? canvas1.getScene().getWindow() : null;
         File file = fileChooser.showOpenDialog(window);
         if (file != null) {
+            State prevState = state;
             try {
                 Integer[][] matrix = loadCsvMatrix(file);
                 inputGraph.replaceMatrix(matrix);
@@ -525,9 +520,17 @@ public class Controller {
                 logger.log(Logger.Type.ACTION,
                         "Загружен файл: " + file.getName() + " (" + inputGraph.size() + " вершин)");
             } catch (IllegalArgumentException e) {
+                state = State.IO_ERROR;
                 logger.log(Logger.Type.ERROR, "Ошибка валидации файла: " + e.getMessage());
+                new Alert(Alert.AlertType.ERROR, "Ошибка валидации: " + e.getMessage()).showAndWait();
+                state = prevState;
+                updateButtonsState();
             } catch (Exception e) {
+                state = State.IO_ERROR;
                 logger.log(Logger.Type.ERROR, "Не удалось загрузить файл: " + e.getMessage());
+                new Alert(Alert.AlertType.ERROR, "Не удалось загрузить файл: " + e.getMessage()).showAndWait();
+                state = prevState;
+                updateButtonsState();
             }
         }
     }
@@ -548,9 +551,9 @@ public class Controller {
                 Integer[] row = new Integer[parts.length];
                 for (int j = 0; j < parts.length; j++) {
                     String val = parts[j].trim();
-                    if (val.isEmpty() || val.equalsIgnoreCase("inf")) {
+                    if (val.isEmpty() || val.equalsIgnoreCase("inf"))
                         row[j] = null;
-                    } else {
+                    else {
                         try {
                             int weight = Integer.parseInt(val);
                             if (weight < 0)
@@ -608,9 +611,11 @@ public class Controller {
             String baseName = (dotIndex > 0) ? originalName.substring(0, dotIndex) : originalName;
             fileChooser.setInitialFileName(baseName);
         }
+
         javafx.stage.Window window = canvas1.getScene() != null ? canvas1.getScene().getWindow() : null;
         File file = fileChooser.showSaveDialog(window);
         if (file != null) {
+            State prevState = state;
             try {
                 String filePath = file.getAbsolutePath();
                 String baseName;
@@ -639,9 +644,14 @@ public class Controller {
                 logger.log(Logger.Type.ACTION,
                         "Сохранено: " + new File(matrixPath).getName() + " и " + new File(logPath).getName());
             } catch (Exception e) {
+                state = State.IO_ERROR;
                 logger.log(Logger.Type.ERROR, "Не удалось сохранить файл: " + e.getMessage());
+                new Alert(Alert.AlertType.ERROR, "Не удалось сохранить файл: " + e.getMessage()).showAndWait();
+                state = prevState;
+                updateButtonsState();
             }
         }
+
     }
 
     private void saveMatrix(File file, Integer[][] matrix) throws Exception {
@@ -669,27 +679,127 @@ public class Controller {
         writer.close();
     }
 
+    // Строгое управление состояниями кнопок (Спецификация п. 1.3.2)
     private void updateButtonsState() {
         boolean isRunning = (state != State.WAITING_INPUT);
-        boolean canStepForward = (state == State.WAITING_INPUT) || (currentStep < totalSteps);
+        boolean isFinished = (state == State.ALGORITHM_FINISHED);
+        boolean isAuto = (state == State.AUTO_PLAYING);
+        boolean canStep = (state == State.WAITING_INPUT) || (state == State.ALGORITHM_PAUSED)
+                || (currentStep < totalSteps);
 
-        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_FORWARD, canStepForward);
-        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_N, canStepForward);
-        controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, canStepForward);
-        controlPanel.setEnabled(ControlPanel.ButtonId.RESET, true);
-        controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, !isRunning);
-        controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, !isRunning);
-        controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, !isRunning);
-        controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, true);
-        controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, canStepForward);
-        controlPanel.setEnabled(ControlPanel.ButtonId.STEP_BACK, currentStep > 0);
-
-        table1.setEditingLocked(isRunning);
-        controlPanel.setStartPauseLabel(isAutoPlaying ? "Пауза" : "Пуск");
+        if (isAuto) {
+            // "В состоянии «Автоматическое выполнение» ... Все остальные кнопки неактивны"
+            controlPanel.setEnabled(ControlPanel.ButtonId.STEP_FORWARD, false);
+            controlPanel.setEnabled(ControlPanel.ButtonId.STEP_N, false);
+            controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, true);
+            controlPanel.setEnabled(ControlPanel.ButtonId.RESET, true);
+            controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, false);
+            controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, false);
+            controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, false);
+            controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, false);
+            controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, false);
+            controlPanel.setEnabled(ControlPanel.ButtonId.STEP_BACK, false);
+            table1.setEditingLocked(true);
+        } else {
+            controlPanel.setEnabled(ControlPanel.ButtonId.STEP_FORWARD, canStep && !isFinished);
+            controlPanel.setEnabled(ControlPanel.ButtonId.STEP_N, canStep && !isFinished);
+            controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, canStep && !isFinished);
+            controlPanel.setEnabled(ControlPanel.ButtonId.RESET, true);
+            controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, !isRunning);
+            controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, !isRunning);
+            controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, !isRunning);
+            controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, true);
+            controlPanel.setEnabled(ControlPanel.ButtonId.SPEED, canStep && !isFinished);
+            controlPanel.setEnabled(ControlPanel.ButtonId.STEP_BACK, currentStep > 0);
+            table1.setEditingLocked(isRunning);
+        }
+        controlPanel.setStartPauseLabel(isAuto ? "Пауза" : "Пуск");
     }
 
     private void rebuildAll() {
         table1.rebuild(inputGraph);
         table2.rebuild(resultGraph);
+    }
+
+    public void showGeneratorDialog(javafx.stage.Window owner) {
+        Dialog<double[]> dialog = new Dialog<>();
+        dialog.setTitle("Генерация случайного графа");
+        dialog.setHeaderText("Введите параметры генерации");
+
+        ButtonType generateButtonType = new ButtonType("Сгенерировать", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(generateButtonType, ButtonType.CANCEL);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(20, 150, 10, 10));
+
+        TextField nField = new TextField("5");
+        TextField degreeField = new TextField("2");
+        TextField minWeightField = new TextField("1");
+        TextField maxWeightField = new TextField("99");
+
+        grid.add(new Label("Число вершин N (2-20):"), 0, 0);
+        grid.add(nField, 1, 0);
+        grid.add(new Label("Степень вершины (1 до N-1):"), 0, 1);
+        grid.add(degreeField, 1, 1);
+        grid.add(new Label("Мин. вес ребра:"), 0, 2);
+        grid.add(minWeightField, 1, 2);
+        grid.add(new Label("Макс. вес ребра:"), 0, 3);
+        grid.add(maxWeightField, 1, 3);
+
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == generateButtonType) {
+                try {
+                    int n = Integer.parseInt(nField.getText());
+                    int degree = Integer.parseInt(degreeField.getText());
+                    int minW = Integer.parseInt(minWeightField.getText());
+                    int maxW = Integer.parseInt(maxWeightField.getText());
+                    return new double[] { n, degree, minW, maxW };
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+            return null;
+        });
+
+        Optional<double[]> result = dialog.showAndWait();
+        result.ifPresent(params -> {
+            int n = (int) params[0];
+            int degree = (int) params[1];
+            int minW = (int) params[2];
+            int maxW = (int) params[3];
+            generateRandomGraph(n, degree, minW, maxW);
+        });
+    }
+
+    private void generateRandomGraph(int n, int degree, int minW, int maxW) {
+        if (n < 2 || n > 20) {
+            logger.log(Logger.Type.ERROR, "Число вершин должно быть от 2 до 20");
+            return;
+        }
+        if (degree < 1 || degree >= n) {
+            logger.log(Logger.Type.ERROR, "Степень вершины должна быть от 1 до N-1");
+            return;
+        }
+        if (minW > maxW) {
+            logger.log(Logger.Type.ERROR, "Мин. вес не может быть больше макс. веса");
+            return;
+        }
+
+        GraphGenerator generator = new GraphGenerator(new Random());
+        int[] degrees = new int[n];
+        Arrays.fill(degrees, degree);
+        Integer[][] matrix = generator.generateMatrix(n, degrees, minW, maxW);
+
+        inputGraph.replaceMatrix(matrix);
+        resultGraph.replaceMatrix(matrix);
+        rebuildAll();
+        canvas1.setGraph(inputGraph);
+        canvas2.setGraph(resultGraph);
+        resetAlgorithmState();
+        logger.log(Logger.Type.ACTION, "Сгенерирован случайный граф: N=" + n + ", степень=" + degree);
     }
 }
