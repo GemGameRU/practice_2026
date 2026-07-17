@@ -24,8 +24,11 @@ public class MatrixTableView {
 
     public interface CellSelectionListener {
         void onCellSelected(int i, int j);
+
         void onRowHeaderSelected(int i);
+
         void onColumnHeaderSelected(int j);
+
         void onSelectionCleared();
     }
 
@@ -90,7 +93,6 @@ public class MatrixTableView {
         this.table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         this.table.setPrefHeight(220);
         this.table.setMinHeight(160);
-
         setupSelectionListener();
         setupEmptyAreaClickHandler();
     }
@@ -99,11 +101,8 @@ public class MatrixTableView {
         table.addEventFilter(MouseEvent.MOUSE_PRESSED, e -> {
             if (isRebuilding || selectionListener == null)
                 return;
-
             Node target = (Node) e.getTarget();
-
             boolean onInteractive = false;
-
             Node cur = target;
             while (cur != null && cur != table) {
                 if (cur instanceof TableCell) {
@@ -112,7 +111,6 @@ public class MatrixTableView {
                 }
                 cur = cur.getParent();
             }
-
             if (!onInteractive) {
                 cur = target;
                 while (cur != null && cur != table) {
@@ -123,7 +121,6 @@ public class MatrixTableView {
                     cur = cur.getParent();
                 }
             }
-
             if (!onInteractive) {
                 selectionListener.onSelectionCleared();
             }
@@ -135,7 +132,6 @@ public class MatrixTableView {
         table.getColumns().clear();
         rows.clear();
         colHeaderLabels.clear();
-
         int n = graph.size();
 
         TableColumn<Row, String> rowHeaderCol = new TableColumn<>("v \\ v");
@@ -157,7 +153,7 @@ public class MatrixTableView {
                     setText(item);
                     int i = getIndex();
                     if (selectedVertex == i || selectedRow == i) {
-                        setStyle("-fx-background-color: #fff176;");
+                        setStyle("-fx-background-color: #fff176; -fx-font-weight: bold;");
                     } else {
                         setStyle("");
                     }
@@ -184,7 +180,6 @@ public class MatrixTableView {
         for (int j = 0; j < n; j++) {
             final int colIndex = j;
             TableColumn<Row, String> col = new TableColumn<>();
-
             Label headerLabel = new Label(String.valueOf(j));
             headerLabel.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
             headerLabel.setAlignment(Pos.CENTER);
@@ -195,7 +190,6 @@ public class MatrixTableView {
             });
             col.setGraphic(headerLabel);
             colHeaderLabels.add(headerLabel);
-
             col.setSortable(false);
             col.setResizable(false);
             col.setPrefWidth(56);
@@ -206,7 +200,6 @@ public class MatrixTableView {
                     return new SimpleStringProperty("");
                 return r.getCells().get(colIndex);
             });
-
             if (editable) {
                 col.setCellFactory(tv -> makeEditableCell(colIndex));
                 col.setOnEditCommit(e -> {
@@ -281,18 +274,18 @@ public class MatrixTableView {
 
         if (isAlgIJ) {
             if (hlWasUpdate) {
-                cell.setStyle("-fx-background-color: #66bb6a;"); // зелёный
+                cell.setStyle("-fx-background-color: #66bb6a; -fx-font-weight: bold;"); // зелёный
             } else {
-                cell.setStyle("-fx-background-color: #fff176;"); // жёлтый
+                cell.setStyle("-fx-background-color: #fff176; -fx-font-weight: bold;"); // жёлтый
             }
             return;
         }
         if (isAlgIK) {
-            cell.setStyle("-fx-background-color: #ffb74d;"); // оранжевый (i)
+            cell.setStyle("-fx-background-color: #ffb74d; -fx-font-weight: bold;"); // оранжевый (i)
             return;
         }
         if (isAlgKJ) {
-            cell.setStyle("-fx-background-color: #ce93d8;"); // фиолетовый (j)
+            cell.setStyle("-fx-background-color: #ce93d8; -fx-font-weight: bold;"); // фиолетовый (j)
             return;
         }
 
@@ -309,7 +302,7 @@ public class MatrixTableView {
         }
 
         if (isUserSelected) {
-            cell.setStyle("-fx-background-color: #fff176;");
+            cell.setStyle("-fx-background-color: #fff176; -fx-font-weight: bold;");
         } else if (isDiag) {
             cell.setStyle("-fx-background-color: #eceff1; -fx-text-fill: #90a4ae;");
         } else {
@@ -387,7 +380,7 @@ public class MatrixTableView {
     private void updateHeaderStyles() {
         for (int c = 0; c < colHeaderLabels.size(); c++) {
             if (selectedVertex == c || selectedCol == c) {
-                colHeaderLabels.get(c).setStyle("-fx-background-color: #fff176;");
+                colHeaderLabels.get(c).setStyle("-fx-background-color: #fff176; -fx-font-weight: bold;");
             } else {
                 colHeaderLabels.get(c).setStyle("");
             }
@@ -398,20 +391,16 @@ public class MatrixTableView {
         Runnable updateSelection = () -> {
             if (isRebuilding || selectionListener == null)
                 return;
-
             @SuppressWarnings("unchecked")
             TablePosition<Row, ?> pos = table.getFocusModel().getFocusedCell();
-
             if (pos == null || (pos.getRow() < 0 && pos.getColumn() <= 0)) {
                 selectionListener.onSelectionCleared();
                 return;
             }
-
             if (pos.getRow() < 0) {
                 selectionListener.onColumnHeaderSelected(pos.getColumn() - 1);
                 return;
             }
-
             int i = pos.getRow();
             int j = pos.getColumn() - 1;
             if (j >= 0) {
@@ -420,7 +409,6 @@ public class MatrixTableView {
                 selectionListener.onRowHeaderSelected(i);
             }
         };
-
         table.getFocusModel().focusedCellProperty().addListener((obs, oldPos, newPos) -> updateSelection.run());
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> updateSelection.run());
     }

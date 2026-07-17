@@ -7,7 +7,6 @@ import com.floydwarshall.view.ControlPanel;
 import com.floydwarshall.view.SmartGraphView;
 import com.floydwarshall.view.LogPanel;
 import com.floydwarshall.view.MatrixTableView;
-
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -27,7 +26,6 @@ import javafx.scene.text.Font;
 import javafx.stage.Stage;
 
 public class App extends Application {
-
     private static final double WINDOW_W = 1280;
     private static final double WINDOW_H = 860;
 
@@ -55,25 +53,22 @@ public class App extends Application {
 
         canvas1 = new SmartGraphView(560, 320, "Холст 1 — вводимый граф", true);
         canvas2 = new SmartGraphView(560, 320, "Холст 2 — граф кратчайших путей", false);
-
         canvas1.setGraph(inputGraph);
         canvas2.setGraph(new Graph(inputGraph));
 
         table1 = new MatrixTableView(true);
         table2 = new MatrixTableView(false);
-
         table1.rebuild(inputGraph);
         table2.rebuild(inputGraph);
 
         controlPanel = new ControlPanel();
 
-        // Увеличиваем высоту поля описания шага
         stepDescriptionField = new TextArea("Алгоритм не запущен");
         stepDescriptionField.setEditable(false);
         stepDescriptionField.setWrapText(true);
         stepDescriptionField.setPrefWidth(420);
-        stepDescriptionField.setPrefRowCount(12); // Было 8
-        stepDescriptionField.setMinHeight(160);   // Было 120
+        stepDescriptionField.setPrefRowCount(8);
+        stepDescriptionField.setMinHeight(120);
         stepDescriptionField.setStyle("-fx-font-family: 'Monospace'; -fx-font-size: 12px;");
 
         LogPanel logPanel = new LogPanel(logger);
@@ -82,10 +77,7 @@ public class App extends Application {
                 inputGraph, canvas1, canvas2, table1, table2, controlPanel, logger);
         controller.setStepDescriptionUpdater(text -> stepDescriptionField.setText(text));
 
-        // ВАЖНО: В классе MatrixTableView необходимо добавить обработку клика по пустому месту
-        // (фону таблицы), чтобы вызывать table.clearSelectionSync() и canvas.clearSelection().
-        // Это выполнит требование "Снимать подсветку ... по пустому месту в области матрицы".
-
+        // Меню для генерации графа (чтобы не нарушать правило 10 кнопок на панели)
         MenuBar menuBar = new MenuBar();
         Menu graphMenu = new Menu("Граф");
         MenuItem generateItem = new MenuItem("Сгенерировать случайный...");
@@ -100,14 +92,12 @@ public class App extends Application {
 
         VBox table1Box = titledBox("Таблица 1 — вводимая матрица смежности", table1.getNode());
         VBox table2Box = titledBox("Таблица 2 — текущая матрица алгоритма", table2.getNode());
-
         HBox tablesBox = new HBox(8, table1Box, table2Box);
         tablesBox.setPadding(new Insets(0, 6, 6, 6));
         HBox.setHgrow(table1Box, Priority.ALWAYS);
         HBox.setHgrow(table2Box, Priority.ALWAYS);
 
         VBox stepBox = titledBox("Поле описания текущего шага", stepDescriptionField);
-
         HBox controlsBox = new HBox(8, controlPanel.getRoot(), stepBox);
         controlsBox.setPadding(new Insets(0, 6, 6, 6));
         controlsBox.setAlignment(Pos.TOP_LEFT);

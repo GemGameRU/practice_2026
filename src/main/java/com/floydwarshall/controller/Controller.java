@@ -60,10 +60,10 @@ public class Controller {
     }
 
     public Controller(Graph inputGraph,
-                      SmartGraphView canvas1, SmartGraphView canvas2,
-                      MatrixTableView table1, MatrixTableView table2,
-                      ControlPanel controlPanel,
-                      Logger logger) {
+            SmartGraphView canvas1, SmartGraphView canvas2,
+            MatrixTableView table1, MatrixTableView table2,
+            ControlPanel controlPanel,
+            Logger logger) {
         this.inputGraph = inputGraph;
         this.resultGraph = new Graph(inputGraph);
         this.canvas1 = canvas1;
@@ -102,7 +102,7 @@ public class Controller {
     }
 
     private void wireSelectionSync(SmartGraphView canvas, MatrixTableView table,
-                                   SmartGraphView otherCanvas, MatrixTableView otherTable) {
+            SmartGraphView otherCanvas, MatrixTableView otherTable) {
         canvas.setSelectionListener((type, a, b) -> {
             otherTable.clearSelectionSync();
             if (type == SmartGraphView.SelectionType.VERTEX)
@@ -295,8 +295,7 @@ public class Controller {
     }
 
     private void doStepN() {
-        // Добавлен .trim() для защиты от случайных пробелов при вводе k, i, j
-        String rawInput = controlPanel.getStepNText().toLowerCase().trim();
+        String rawInput = controlPanel.getStepNText().toLowerCase();
         if (rawInput.equals("k") || rawInput.equals("i") || rawInput.equals("j")) {
             doStepByIteration(rawInput);
             return;
@@ -356,7 +355,7 @@ public class Controller {
             return;
         }
 
-        logger.log(Logger.Type.STATE, "Шаг N (режим " + mode + "): выполнение " + targetSteps + " шаг(ов)");
+        logger.log(Logger.Type.STATE, "Шаг N (режим " + mode + "): выполнение до " + targetSteps + " шаг(ов)");
         int performed = 0;
         for (int count = 0; count < targetSteps; count++) {
             if (state == State.ALGORITHM_FINISHED && currentStep >= totalSteps)
@@ -716,6 +715,7 @@ public class Controller {
                 || (currentStep < totalSteps);
 
         if (isAuto) {
+            // "В состоянии «Автоматическое выполнение» ... Все остальные кнопки неактивны"
             controlPanel.setEnabled(ControlPanel.ButtonId.STEP_FORWARD, false);
             controlPanel.setEnabled(ControlPanel.ButtonId.STEP_N, false);
             controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, true);
