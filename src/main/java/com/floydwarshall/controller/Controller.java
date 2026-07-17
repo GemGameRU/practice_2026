@@ -53,6 +53,9 @@ public class Controller {
     private List<ExecutorSnapshot> snapshots = new ArrayList<>();
     private List<FloydWarshallExecutor.StepResult> results = new ArrayList<>();
 
+    private boolean isTableDirty = false;
+    private Integer[][] committedMatrix = null;
+
     public interface StepDescriptionUpdater {
         void update(String text);
     }
@@ -445,6 +448,7 @@ public class Controller {
         canvas1.setGraph(inputGraph);
         canvas2.setGraph(resultGraph);
         logger.log(Logger.Type.ACTION, "Добавлена вершина " + newVertex);
+        isTableDirty = true;
         resetAlgorithmState();
     }
 
@@ -462,12 +466,16 @@ public class Controller {
         canvas1.setGraph(inputGraph);
         canvas2.setGraph(resultGraph);
         logger.log(Logger.Type.ACTION, "Удалена вершина " + toRemove);
+        isTableDirty = true;
         resetAlgorithmState();
     }
 
     private void applyCellEdit(int i, int j, String newValue) {
         if (i == j)
             return;
+
+        Integer oldValue = inputGraph.get(i, j);
+
         Integer v;
         if (newValue == null || newValue.trim().isEmpty() || newValue.trim().equalsIgnoreCase("inf"))
             v = null;
@@ -491,11 +499,27 @@ public class Controller {
         canvas2.setGraph(resultGraph);
         table1.rebuild(inputGraph);
         table2.rebuild(resultGraph);
-        logger.log(Logger.Type.ACTION, "Ячейка (" + i + ", " + j + ") изменена: " + (v == null ? "inf" : v));
+
+        String oldStr = (oldValue == null) ? "inf" : String.valueOf(oldValue);
+        String newStr = (v == null) ? "inf" : String.valueOf(v);
+        logger.log(Logger.Type.ACTION, "Ячейка (" + i + ", " + j + ") изменена: " + oldStr + " → " + newStr);
+
+        isTableDirty = true;
         resetAlgorithmState();
     }
 
     private void doLoadFile() {
+        if (isTableDirty) {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "В таблице 1 есть несохранённые изменения. Перезаписать?",
+                    ButtonType.YES, ButtonType.NO);
+            confirm.setHeaderText("Подтверждение загрузки");
+            Optional<ButtonType> result = confirm.showAndWait();
+            if (result.isEmpty() || result.get() != ButtonType.YES) {
+                return;
+            }
+        }
+
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Загрузка графа из файла");
         fileChooser.getExtensionFilters().addAll(
@@ -503,7 +527,6 @@ public class Controller {
                 new FileChooser.ExtensionFilter("All Files", "*.*"));
         if (lastLoadedFile != null && lastLoadedFile.getParentFile() != null)
             fileChooser.setInitialDirectory(lastLoadedFile.getParentFile());
-
         javafx.stage.Window window = canvas1.getScene() != null ? canvas1.getScene().getWindow() : null;
         File file = fileChooser.showOpenDialog(window);
         if (file != null) {
@@ -517,8 +540,11 @@ public class Controller {
                 canvas2.setGraph(resultGraph);
                 resetAlgorithmState();
                 lastLoadedFile = file;
+                isTableDirty = false;
+
+                int n = inputGraph.size();
                 logger.log(Logger.Type.ACTION,
-                        "Загружен файл: " + file.getName() + " (" + inputGraph.size() + " вершин)");
+                        "Загружен файл: " + file.getName() + " (" + n + " " + pluralizeVertices(n) + ")");
             } catch (IllegalArgumentException e) {
                 state = State.IO_ERROR;
                 logger.log(Logger.Type.ERROR, "Ошибка валидации файла: " + e.getMessage());
@@ -642,7 +668,8 @@ public class Controller {
                 saveMatrix(new File(matrixPath), matrixToSave);
                 saveLogFile(new File(logPath));
                 logger.log(Logger.Type.ACTION,
-                        "Сохранено: " + new File(matrixPath).getName() + " и " + new File(logPath).getName());
+                        "Сохранено: " + new File(matrixPath).getName() + ", " + new File(logPath).getName());
+                isTableDirty = false;
             } catch (Exception e) {
                 state = State.IO_ERROR;
                 logger.log(Logger.Type.ERROR, "Не удалось сохранить файл: " + e.getMessage());
@@ -679,7 +706,6 @@ public class Controller {
         writer.close();
     }
 
-    // Строгое управление состояниями кнопок (Спецификация п. 1.3.2)
     private void updateButtonsState() {
         boolean isRunning = (state != State.WAITING_INPUT);
         boolean isFinished = (state == State.ALGORITHM_FINISHED);
@@ -705,7 +731,7 @@ public class Controller {
             controlPanel.setEnabled(ControlPanel.ButtonId.STEP_N, canStep && !isFinished);
             controlPanel.setEnabled(ControlPanel.ButtonId.START_PAUSE, canStep && !isFinished);
             controlPanel.setEnabled(ControlPanel.ButtonId.RESET, true);
-            controlPanel.setEnabled(ControlPanel.ButtonId.ADD_VERTEX, !isRunning);
+            controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, !isRunning && inputGraph.size() > 2);
             controlPanel.setEnabled(ControlPanel.ButtonId.REMOVE_VERTEX, !isRunning);
             controlPanel.setEnabled(ControlPanel.ButtonId.LOAD_FILE, !isRunning);
             controlPanel.setEnabled(ControlPanel.ButtonId.SAVE, true);
@@ -801,5 +827,15 @@ public class Controller {
         canvas2.setGraph(resultGraph);
         resetAlgorithmState();
         logger.log(Logger.Type.ACTION, "Сгенерирован случайный граф: N=" + n + ", степень=" + degree);
+    }
+
+    private String pluralizeVertices(int n) {
+        int mod10 = n % 10;
+        int mod100 = n % 100;
+        if (mod10 == 1 && mod100 != 11)
+            return "вершина";
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14))
+            return "вершины";
+        return "вершин";
     }
 }
